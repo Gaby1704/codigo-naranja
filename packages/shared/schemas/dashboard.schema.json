@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codigo-naranja.local/schemas/dashboard.json",
+  "title": "Dashboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "periods",
+    "municipalities",
+    "violenceTypes",
+    "serviceTypes",
+    "summaries",
+    "trends",
+    "totalCases",
+    "totalCapacity",
+    "priorityCount",
+    "source"
+  ],
+  "properties": {
+    "periods": { "type": "array", "items": { "type": "string" } },
+    "municipalities": { "type": "array", "items": { "type": "string" } },
+    "violenceTypes": { "type": "array", "items": { "type": "string" } },
+    "serviceTypes": { "type": "array", "items": { "type": "string" } },
+    "summaries": { "type": "array", "items": { "$ref": "#/$defs/summary" } },
+    "trends": { "type": "array", "items": { "$ref": "#/$defs/trend" } },
+    "totalCases": { "type": "number", "minimum": 0 },
+    "totalCapacity": { "type": "number", "minimum": 0 },
+    "priorityCount": { "type": "integer", "minimum": 0 },
+    "source": { "$ref": "#/$defs/source" }
+  },
+  "$defs": {
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "action", "color"],
+      "properties": {
+        "label": { "type": "string" },
+        "action": { "type": "string" },
+        "color": { "enum": ["priority", "elevated", "watch", "stable"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cases", "capacity", "ratio", "count", "classification"],
+      "properties": {
+        "name": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "capacity": { "type": "number", "minimum": 0 },
+        "ratio": { "type": "number" },
+        "count": { "type": "integer", "minimum": 0 },
+        "classification": { "$ref": "#/$defs/classification" }
+      }
+    },
+    "trend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["period", "cases", "capacity"],
+      "properties": {
+        "period": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "capacity": { "type": "number", "minimum": 0 }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processed", "valid", "removed", "imputed", "personDuplicates"],
+      "properties": {
+        "processed": { "type": "integer", "minimum": 0 },
+        "valid": { "type": "integer", "minimum": 0 },
+        "removed": { "type": "integer", "minimum": 0 },
+        "imputed": { "type": "integer", "minimum": 0 },
+        "personDuplicates": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "synthetic", "audit"],
+      "properties": {
+        "fileName": { "type": ["string", "null"] },
+        "synthetic": { "type": "boolean" },
+        "audit": { "anyOf": [{ "$ref": "#/$defs/audit" }, { "type": "null" }] }
+      }
+    }
+  }
+}

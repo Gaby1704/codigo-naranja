@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codigo-naranja.local/schemas/dataset.json",
+  "title": "Dataset",
+  "$defs": {
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "period", "violence", "service", "cases", "capacity", "person"],
+      "properties": {
+        "zone": { "type": "string", "minLength": 1 },
+        "period": { "type": "string", "minLength": 1 },
+        "violence": { "type": "string", "minLength": 1 },
+        "service": { "type": "string", "minLength": 1 },
+        "cases": { "type": "string", "minLength": 1 },
+        "capacity": { "type": "string", "minLength": 1 },
+        "person": { "type": "string", "minLength": 1 }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uploadId", "name", "sheet", "sheets", "headers", "preview", "rowCount", "suggestedMapping"],
+      "properties": {
+        "uploadId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "sheet": { "type": "string" },
+        "sheets": { "type": "array", "items": { "type": "string" } },
+        "headers": { "type": "array", "items": { "type": "string" } },
+        "preview": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "string" } } },
+        "rowCount": { "type": "integer", "minimum": 0 },
+        "suggestedMapping": { "$ref": "#/$defs/mapping" }
+      }
+    },
+    "apply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sheet", "mapping"],
+      "properties": {
+        "sheet": { "type": "string", "minLength": 1 },
+        "mapping": { "$ref": "#/$defs/mapping" }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "period", "violence", "service", "cases", "capacity"],
+      "properties": {
+        "zone": { "type": "string" },
+        "period": { "type": "string" },
+        "violence": { "type": "string" },
+        "service": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "capacity": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

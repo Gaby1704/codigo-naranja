@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.env
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+apps/api/data/*
+!apps/api/data/.gitkeep
+.DS_Store
+*.tsbuildinfo
+.vite/
