@@ -335,3 +335,35 @@ def test_age_mode_and_demographic_column_mapping_guards() -> None:
     )
     assert page["total"] == 1
     assert page["rows"][0]["zone"] == "Tlaxcala"
+
+
+def test_agresor_edad_with_unknowns_and_hecho_fecha_yearly_average() -> None:
+    from app.services.rules import detect_extra_schema, validate_processed_dataset
+
+    rows = [
+        {"VICTIMA_MUNICIPIO": "Apizaco", "HECHO_FECHA": "2024-03-10", "TIPO_VIOLENCIA": "FISICA", "AGRESOR_EDAD": "24"},
+        {"VICTIMA_MUNICIPIO": "Apizaco", "HECHO_FECHA": "2024-08-22", "TIPO_VIOLENCIA": "PSICOLOGICA", "AGRESOR_EDAD": "28 años"},
+        {"VICTIMA_MUNICIPIO": "Tlaxcala", "HECHO_FECHA": "2024-11-01", "TIPO_VIOLENCIA": "FISICA", "AGRESOR_EDAD": "NO ESPECIFICADO"},
+        {"VICTIMA_MUNICIPIO": "Tlaxcala", "HECHO_FECHA": "2025-02-14", "TIPO_VIOLENCIA": "SEXUAL", "AGRESOR_EDAD": "32"},
+        {"VICTIMA_MUNICIPIO": "Apizaco", "HECHO_FECHA": "2025-05-03", "TIPO_VIOLENCIA": "FISICA", "AGRESOR_EDAD": "SE DESCONOCE"},
+    ]
+    mapping = suggest_mapping(list(rows[0].keys()), rows)
+    assert mapping["period"] == "HECHO_FECHA"
+    _dims, metrics = detect_extra_schema(rows, mapping)
+    assert "AGRESOR_EDAD" in metrics
+
+    cleaned, audit, meta = validate_processed_dataset(rows, mapping)
+    board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "agresores_hecho.xlsx", "synthetic": False, "audit": audit},
+        meta,
+    )
+    assert [t["period"] for t in board["trends"]] == ["2024", "2025"]
+    assert board["avgCasesPerYear"] == 2.5
+    assert board["trends"][0]["metricAvgs"]["AGRESOR_EDAD"] == 26.0
+    assert board["trends"][1]["metricAvgs"]["AGRESOR_EDAD"] == 32.0
+    agresor_metric = next(m for m in board["dynamicMetrics"] if m["key"] == "AGRESOR_EDAD")
+    assert agresor_metric["avg"] == 28.0
+    assert agresor_metric["validCount"] == 3
+    assert any(b["key"] == "metric:AGRESOR_EDAD" for b in board["dynamicBreakdowns"])

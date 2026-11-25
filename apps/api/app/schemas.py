@@ -79,6 +79,7 @@ class Trend(BaseModel):
     capacity: float
     uniquePeople: int
     complete: bool
+    metricAvgs: dict[str, float] = {}
 
 
 class MobileRouteStop(BaseModel):
@@ -217,6 +218,7 @@ class DashboardResponse(BaseModel):
     missingCapacityCount: int
     naCapacityCount: int
     undatedCasesCount: float = 0.0
+    avgCasesPerYear: float | None = None
     priorityCount: int
     dimensionLabels: DimensionLabels
     extraDimensions: list[str] = []

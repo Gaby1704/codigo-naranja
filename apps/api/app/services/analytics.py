@@ -729,7 +729,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         )
     summaries.sort(key=lambda item: (item["ratio"], item["cases"]), reverse=True)
 
-    use_yearly_buckets = (len(periods) > 6 or any(mo for _yr, mo, _dy in row_parts)) and len(years) >= 2
+    use_yearly_buckets = (len(periods) > 6 or any(mo for _yr, mo, _dy in row_parts)) and len(years) >= 1
     trend_buckets: dict[str, list[dict]] = {}
     unspecified_period_cases = 0.0
     for row, parts in zip(records, row_parts):
@@ -747,6 +747,11 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         subset = trend_buckets[period]
         is_complete = all(row.get("period_complete", 1) == 1 for row in subset) and not is_period_incomplete(period)
         period_people = {row["person_id"] for row in subset if row.get("person_id")}
+        metric_avgs: dict[str, float] = {}
+        for col in extra_metrics:
+            vals = [float(v) for r in subset for v in [(r.get("extra_metrics") or {}).get(col)] if v is not None]
+            if vals:
+                metric_avgs[col] = round(sum(vals) / len(vals), 2)
         all_trends.append(
             {
                 "period": period,
@@ -754,10 +759,16 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "capacity": sum(float(row["capacity"]) for row in subset if row["capacity"] is not None),
                 "uniquePeople": len(period_people),
                 "complete": is_complete,
+                "metricAvgs": metric_avgs,
             }
         )
 
-    trends = all_trends[-5:]
+    trends = all_trends[-10:]
+    avg_cases_per_year = (
+        round(sum(item["cases"] for item in all_trends) / len(all_trends), 1)
+        if all_trends
+        else None
+    )
     forecast = _build_forecast(all_trends, summaries)
     mobile_route = _build_mobile_route(summaries)
     dynamic_breakdowns = _build_dynamic_breakdowns(filtered, dim_labels, extra_dimensions, extra_metrics)
@@ -789,6 +800,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         "missingCapacityCount": missing_capacity_count,
         "naCapacityCount": na_capacity_count,
         "undatedCasesCount": round(unspecified_period_cases, 2),
+        "avgCasesPerYear": avg_cases_per_year,
         "priorityCount": sum(1 for item in summaries if item["ratio"] >= rules["priorityRatio"]),
         "dimensionLabels": dim_labels,
         "extraDimensions": extra_dimensions,

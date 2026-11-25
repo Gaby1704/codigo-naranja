@@ -140,6 +140,7 @@ export function Charts({
   missingTotal,
   naTotal,
   undatedCases = 0,
+  avgCasesPerYear = null,
   defaultExpandedComparison = false,
   onSelect,
   onShowAll,
@@ -156,6 +157,7 @@ export function Charts({
   missingTotal: number
   naTotal: number
   undatedCases?: number
+  avgCasesPerYear?: number | null
   defaultExpandedComparison?: boolean
   onSelect: (name: string) => void
   onShowAll: () => void
@@ -163,6 +165,10 @@ export function Charts({
 }) {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
   const hasTrendData = trends.length > 0 || (forecast?.available && forecast.points.length > 0)
+  const primaryAgeKey =
+    dynamicMetrics.find((m) => /\b(agresor.*edad|edad.*agresor)\b/i.test(m.label))?.key ??
+    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label))?.key ??
+    ""
   const forecastPoints = forecast?.available ? forecast.points : []
   const trendValues = [
     ...trends.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
@@ -211,7 +217,10 @@ export function Charts({
         <div className="panel-heading compact">
           <div>
             <h2>{trendHeadline}</h2>
-            <p>{trendSubtitle}</p>
+            <p>
+              {trendSubtitle}
+              {avgCasesPerYear !== null ? ` · Promedio por año: ${fmt(avgCasesPerYear)} registros` : ""}
+            </p>
           </div>
           <span className="trend-badge">{latestPeriod}</span>
         </div>
@@ -225,16 +234,21 @@ export function Charts({
             {trends.map((point) => {
               const dHeight = point.cases === 0 ? 0 : Math.max(3, (point.cases / maxTrend) * 100)
               const cHeight = point.capacity === 0 ? 0 : Math.max(3, (point.capacity / maxTrend) * 100)
+              const yearAgeAvg = primaryAgeKey ? point.metricAvgs?.[primaryAgeKey] : undefined
+              const barTitle = `${point.period}: ${fmt(point.cases)} casos${
+                yearAgeAvg !== undefined ? ` · Prom. edad: ${fmt(yearAgeAvg)}` : ""
+              }`
               return (
                 <div className={`trend-column ${point.complete ? "" : "incomplete-period"}`} key={point.period}>
                   <span className="trend-val">{fmt(point.cases)}</span>
                   <div className="trend-bars">
-                    <i className="trend-demand" style={{ height: `${dHeight}%` }} title={`${point.period}: ${fmt(point.cases)} casos`} />
+                    <i className="trend-demand" style={{ height: `${dHeight}%` }} title={barTitle} />
                     {hasCapacityData && (
                       <i className="trend-capacity" style={{ height: `${cHeight}%` }} title={`${point.period}: ${fmt(point.capacity)} atenciones`} />
                     )}
                   </div>
                   <span>{point.period}</span>
+                  {yearAgeAvg !== undefined && <small className="trend-age">{fmt(yearAgeAvg)} a.</small>}
                 </div>
               )
             })}

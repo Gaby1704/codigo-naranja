@@ -8,7 +8,28 @@ from app.services.constants import load_constants
 
 _NUMERIC_PATTERN = re.compile(r"^[-+]?\d+(?:\.\d+)?$")
 _NA_TOKENS = {"N/A", "NA", "N.A.", "N.A", "NO APLICA", "NO APLICABLE"}
-_MISSING_TOKENS = {"", "NULL", "NONE", "NAN", "SIN DATO", "FALTANTE", "N/D", "ND", "-", "--"}
+_MISSING_TOKENS = {
+    "",
+    "NULL",
+    "NONE",
+    "NAN",
+    "SIN DATO",
+    "FALTANTE",
+    "N/D",
+    "ND",
+    "-",
+    "--",
+    "NO ESPECIFICADO",
+    "NO ESPECIFICADA",
+    "SE DESCONOCE",
+    "DESCONOCIDO",
+    "DESCONOCIDA",
+    "SE IGNORA",
+    "IGNORA",
+    "NO SABE",
+    "NO REPORTA",
+}
+_AGE_UNIT_RE = re.compile(r"\s*(?:ANOS|ANO|AÑOS|AÑO)\s*$", re.IGNORECASE)
 _INCOMPLETE_TOKENS = ("INCOMPLET", "PARCIAL", "EN CURSO", "PROVISIONAL", "ABIERTO", "(P)")
 
 
@@ -106,6 +127,7 @@ def canonical_zone(value: Any) -> str:
 def _is_mostly_numeric(header: str, rows: list[dict[str, Any]]) -> bool:
     if not rows:
         return False
+    is_age = _is_age_col(header)
     sample = [row.get(header) for row in rows[:80]]
     non_empty = [val for val in sample if normalize(val) not in _MISSING_TOKENS]
     if not non_empty:
@@ -113,13 +135,13 @@ def _is_mostly_numeric(header: str, rows: list[dict[str, Any]]) -> bool:
     numeric_ok = 0
     explicit_number = 0
     for val in non_empty:
-        _, status = parse_numeric_cell(val)
+        _, status = _parse_extra_metric_cell(val, is_age=is_age)
         if status in {"value", "zero"}:
             explicit_number += 1
             numeric_ok += 1
         elif status == "na":
             numeric_ok += 1
-    return explicit_number >= 1 and (numeric_ok / len(non_empty)) >= 0.7
+    return explicit_number >= 1 and (numeric_ok / len(non_empty)) >= (0.35 if is_age else 0.7)
 
 
 _METRIC_FALSE_POSITIVES = (
@@ -164,6 +186,9 @@ def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None
     residence = guess("residenceZone", exclude={zone})
     period = guess("period", exclude={zone, residence})
     event_date = guess("eventDate", exclude={zone, residence, period})
+    if not period and event_date:
+        period = event_date
+        event_date = ""
     violence = guess("violence", exclude={zone, residence, period, event_date})
     service = guess("service", exclude={zone, residence, period, event_date, violence})
     cases = guess("cases", require_numeric=True, exclude={zone, residence, period, event_date, violence, service})
@@ -175,20 +200,14 @@ def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None
         used = {zone, residence, period, event_date, violence, service, cases, capacity, person, period_status} - {""}
         if not zone:
             for header in headers:
-                if header not in used and not _is_mostly_numeric(header, sample_rows):
+                if (
+                    header not in used
+                    and not _is_age_col(header)
+                    and not _is_table_only_col(header)
+                    and not _is_technical_helper_col(header, {})
+                    and not _is_mostly_numeric(header, sample_rows)
+                ):
                     zone = header
-                    used.add(header)
-                    break
-        if not violence:
-            for header in headers:
-                if header not in used and not _is_mostly_numeric(header, sample_rows):
-                    violence = header
-                    used.add(header)
-                    break
-        if not service:
-            for header in headers:
-                if header not in used and not _is_mostly_numeric(header, sample_rows):
-                    service = header
                     used.add(header)
                     break
 
@@ -252,6 +271,18 @@ def detect_table_only_columns(rows: list[dict[str, Any]], mapping: dict[str, str
     return cols[:6]
 
 
+def _is_age_col(header: str) -> bool:
+    tokens = normalize(header).replace("_", " ").split()
+    return "EDAD" in tokens
+
+
+def _parse_extra_metric_cell(value: Any, is_age: bool = False) -> tuple[float | None, str]:
+    if is_age and isinstance(value, str):
+        cleaned = _AGE_UNIT_RE.sub("", value.strip()).strip()
+        return parse_numeric_cell(cleaned)
+    return parse_numeric_cell(value)
+
+
 def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[str], list[str]]:
     """Detect extra categorical/temporal/status dimensions and numeric metrics from unmapped Excel columns."""
     if not rows:
@@ -269,16 +300,18 @@ def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> 
         if not non_empty:
             continue
 
+        is_age = _is_age_col(header)
         numeric_ok = 0
         explicit_num = 0
         for val in non_empty:
-            _, status = parse_numeric_cell(val)
+            _, status = _parse_extra_metric_cell(val, is_age=is_age)
             if status in {"value", "zero"}:
                 numeric_ok += 1
                 explicit_num += 1
             elif status == "na":
                 numeric_ok += 1
-        if explicit_num >= 1 and (numeric_ok / len(non_empty)) >= 0.75:
+        min_ratio = 0.30 if is_age else 0.75
+        if explicit_num >= 1 and (numeric_ok / len(non_empty)) >= min_ratio:
             metric_candidates.append((-explicit_num, index, header))
             continue
 
@@ -402,7 +435,7 @@ def validate_processed_dataset(
         period_status = raw.get(status_col, "") if status_col else ""
 
         zone = canonical_zone(zone_raw) if zone_col else unspecified
-        period = period_raw or unspecified
+        period = period_raw or event_date or unspecified
         violence_col = mapping.get("violence") or ""
         service_col = mapping.get("service") or ""
         violence = normalize(raw.get(violence_col)) or unspecified if violence_col else unspecified
@@ -423,7 +456,7 @@ def validate_processed_dataset(
         row_extra_metrics: dict[str, float | None] = {}
         row_extra_statuses: dict[str, str] = {}
         for col in extra_metrics:
-            val_num, val_status = parse_numeric_cell(raw.get(col))
+            val_num, val_status = _parse_extra_metric_cell(raw.get(col), is_age=_is_age_col(col))
             if val_status == "invalid":
                 val_num, val_status = None, "missing"
             row_extra_metrics[col] = val_num

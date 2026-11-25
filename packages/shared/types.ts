@@ -61,6 +61,7 @@ export type Trend = {
   capacity: number
   uniquePeople: number
   complete: boolean
+  metricAvgs?: Record<string, number>
 }
 
 export type MobileRouteStop = {
@@ -199,6 +200,7 @@ export type Dashboard = {
   missingCapacityCount: number
   naCapacityCount: number
   undatedCasesCount?: number
+  avgCasesPerYear?: number | null
   priorityCount: number
   dimensionLabels: DimensionLabels
   extraDimensions: string[]

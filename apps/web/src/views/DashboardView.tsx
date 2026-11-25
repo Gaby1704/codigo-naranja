@@ -103,6 +103,7 @@ export function DashboardView() {
   const tableDimensions = data?.tableDimensions ?? []
   const recordRows = data?.recordRows ?? []
   const primaryAgeBreakdown =
+    extraBreakdowns.find((b) => /\b(agresor.*edad|edad.*agresor)\b/i.test(b.label)) ??
     extraBreakdowns.find((b) => /\bedad\b/i.test(b.label) && !/edad[_ ]?1\b/i.test(b.label)) ??
     extraBreakdowns.find((b) => /\bedad\b/i.test(b.label))
   const topAgeRanges = primaryAgeBreakdown
@@ -113,9 +114,11 @@ export function DashboardView() {
     : []
 
   const primaryAgeMetric =
-    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label) && !/edad[_ ]?1\b/i.test(m.label)) ??
-    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label)) ??
+    dynamicMetrics.find((m) => /\b(agresor.*edad|edad.*agresor)\b/i.test(m.label) && m.avg !== null) ??
+    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label) && !/edad[_ ]?1\b/i.test(m.label) && m.avg !== null) ??
+    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label) && m.avg !== null) ??
     dynamicMetrics.find((m) => m.avg !== null)
+  const avgCasesPerYear = data?.avgCasesPerYear ?? null
   const primaryViolenceItem = data?.dynamicBreakdowns?.find((b) => b.key === "violence")?.items[0]
   const hasDataInDb = Boolean(data?.hasData || (data && data.totalRecords > 0) || data?.source.fileName)
 
@@ -379,8 +382,15 @@ export function DashboardView() {
         )}
       </section>
 
-      {(dynamicMetrics.length > 0 || extraBreakdowns.length > 0) && (
+      {(dynamicMetrics.length > 0 || extraBreakdowns.length > 0 || avgCasesPerYear !== null) && (
         <section className="generalities-strip" aria-label="Generalidades de columnas adicionales">
+          {avgCasesPerYear !== null && (
+            <div className="generality-chip">
+              <span className="gen-label">Promedio por año ({dimLabels.period})</span>
+              <strong>{fmt(avgCasesPerYear)} registros/año</strong>
+              <small>En {data?.trends.length ?? 0} años registrados</small>
+            </div>
+          )}
           {dynamicMetrics.map((metric) => (
             <div className="generality-chip" key={`m-${metric.key}`}>
               <span className="gen-label">{humanizeColumnLabel(metric.label)}</span>
@@ -502,6 +512,7 @@ export function DashboardView() {
             missingTotal={missingTotal}
             naTotal={naTotal}
             undatedCases={data?.undatedCasesCount ?? 0}
+            avgCasesPerYear={avgCasesPerYear}
             defaultExpandedComparison={expandComparison}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
             onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}

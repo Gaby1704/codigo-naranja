@@ -411,6 +411,7 @@ button { cursor: pointer; }
 .trend-column.projected { color: #8c3715; }
 .trend-column.incomplete-period { opacity: .65; }
 .trend-val { font-size: 8.5px; color: #362e39; font-weight: 700; }
+.trend-age { font-size: 8px; color: #5d4a66; font-weight: 600; }
 .trend-bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; flex: 1; border-bottom: 1.5px solid #9c92a0; background: repeating-linear-gradient(to bottom, transparent 0, transparent 26px, #ece7ed 27px); min-height: 95px; }
 .trend-bars i { width: 10px; border-radius: 2px 2px 0 0; }
 .trend-demand { background: #a93f26; }
