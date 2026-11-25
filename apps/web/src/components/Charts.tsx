@@ -7,7 +7,7 @@ import type {
   Summary,
   Trend,
 } from "../../../../packages/shared/types"
-import { fmt, gap } from "../lib/format"
+import { fmt, gap, humanizeColumnLabel } from "../lib/format"
 
 const TIER_ORDER: Array<{ color: ClassificationColor; title: string; hint: string }> = [
   { color: "priority", title: "Atención prioritaria", hint: "Demanda supera capacidad (brecha ≥ 130%)" },
@@ -18,25 +18,30 @@ const TIER_ORDER: Array<{ color: ClassificationColor; title: string; hint: strin
 
 export function GeneralComparisonCard({
   summaries,
+  hasCapacityData,
   selected,
   onSelect,
   onShowAll,
   maxRows = 10,
 }: {
   summaries: Summary[]
+  hasCapacityData: boolean
   selected: string
   onSelect: (name: string) => void
   onShowAll: () => void
   maxRows?: number
 }) {
   const rows = summaries.slice(0, maxRows)
-  const maxScale = Math.max(...rows.flatMap((item) => [item.cases, item.capacity]), 1)
+  const maxScale = Math.max(
+    ...rows.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
+    1,
+  )
   const topZone = summaries[0]
   const headline = !topZone
     ? "Sin registros en la selección actual"
-    : topZone.ratio >= 1.3
+    : hasCapacityData && topZone.ratio >= 1.3
       ? `${topZone.name} encabeza la brecha (${gap(topZone.ratio)})`
-      : topZone.capacity > 0
+      : hasCapacityData && topZone.capacity > 0
         ? `La capacidad supera la demanda en ${topZone.name}`
         : `${topZone.name} concentra ${fmt(topZone.cases)} casos`
 
@@ -44,11 +49,8 @@ export function GeneralComparisonCard({
     <section className="panel chart-panel">
       <div className="panel-heading compact">
         <div>
-          <span className="eyebrow">
-            GRÁFICA GENERAL <span className="eyebrow-slash">/</span> 02
-          </span>
           <h2>{headline}</h2>
-          <p>Escala compartida desde 0 · casos registrados vs. atenciones</p>
+          <p>{hasCapacityData ? "Casos vs. atenciones por municipio" : "Casos registrados por municipio"}</p>
         </div>
         <span className="axis-tag">0 – {fmt(Math.ceil(maxScale))}</span>
       </div>
@@ -62,15 +64,19 @@ export function GeneralComparisonCard({
               className={`bar-row ${row.name === selected ? "bar-active" : ""}`}
               key={row.name}
               onClick={() => onSelect(row.name)}
-              title={`${row.name}: ${fmt(row.cases)} casos · ${fmt(row.capacity)} atenciones`}
+              title={
+                hasCapacityData
+                  ? `${row.name}: ${fmt(row.cases)} casos · ${fmt(row.capacity)} atenciones`
+                  : `${row.name}: ${fmt(row.cases)} casos`
+              }
             >
               <span className="bar-name">{row.name}</span>
-              <span className="bar-track">
+              <span className={`bar-track${hasCapacityData ? "" : " single"}`}>
                 <i className="bar-demand" style={{ width: `${demandWidth}%` }} />
-                <i className="bar-capacity" style={{ width: `${capWidth}%` }} />
+                {hasCapacityData && <i className="bar-capacity" style={{ width: `${capWidth}%` }} />}
               </span>
               <span className="bar-number">
-                {fmt(row.cases)} / {fmt(row.capacity)}
+                {hasCapacityData ? `${fmt(row.cases)} / ${fmt(row.capacity)}` : fmt(row.cases)}
               </span>
             </button>
           )
@@ -80,9 +86,11 @@ export function GeneralComparisonCard({
         <span>
           <i className="legend-square demand" /> Casos
         </span>
-        <span>
-          <i className="legend-square capacity" /> Atenciones
-        </span>
+        {hasCapacityData && (
+          <span>
+            <i className="legend-square capacity" /> Atenciones
+          </span>
+        )}
         <button type="button" onClick={onShowAll}>
           Ver todos <ArrowUpRight size={13} />
         </button>
@@ -122,8 +130,8 @@ export function Charts({
 }) {
   const forecastPoints = forecast?.available ? forecast.points : []
   const trendValues = [
-    ...trends.flatMap((item) => [item.cases, item.capacity]),
-    ...forecastPoints.flatMap((item) => [item.cases, item.capacity]),
+    ...trends.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
+    ...forecastPoints.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
   ]
   const maxTrend = Math.max(...trendValues, 1)
   const midTrend = Math.round(maxTrend / 2)
@@ -154,6 +162,7 @@ export function Charts({
     <div className="charts-grid">
       <GeneralComparisonCard
         summaries={summaries}
+        hasCapacityData={hasCapacityData}
         selected={selected}
         onSelect={onSelect}
         onShowAll={onShowAll}
@@ -163,9 +172,6 @@ export function Charts({
       <section className="panel trend-panel">
         <div className="panel-heading compact">
           <div>
-            <span className="eyebrow">
-              PROYECCIÓN DE TENDENCIA <span className="eyebrow-slash">/</span> 03
-            </span>
             <h2>{trendHeadline}</h2>
             <p>{trendSubtitle}</p>
           </div>
@@ -186,7 +192,9 @@ export function Charts({
                   <span className="trend-val">{fmt(point.cases)}</span>
                   <div className="trend-bars">
                     <i className="trend-demand" style={{ height: `${dHeight}%` }} title={`${point.period}: ${fmt(point.cases)} casos`} />
-                    <i className="trend-capacity" style={{ height: `${cHeight}%` }} title={`${point.period}: ${fmt(point.capacity)} atenciones`} />
+                    {hasCapacityData && (
+                      <i className="trend-capacity" style={{ height: `${cHeight}%` }} title={`${point.period}: ${fmt(point.capacity)} atenciones`} />
+                    )}
                   </div>
                   <span>{point.period}</span>
                 </div>
@@ -204,11 +212,13 @@ export function Charts({
                       style={{ height: `${dHeight}%` }}
                       title={`Proyección ${point.period}: ${fmt(point.cases)} casos`}
                     />
-                    <i
-                      className="trend-capacity projected-bar"
-                      style={{ height: `${cHeight}%` }}
-                      title={`Proyección ${point.period}: ${fmt(point.capacity)} atenciones`}
-                    />
+                    {hasCapacityData && (
+                      <i
+                        className="trend-capacity projected-bar"
+                        style={{ height: `${cHeight}%` }}
+                        title={`Proyección ${point.period}: ${fmt(point.capacity)} atenciones`}
+                      />
+                    )}
                   </div>
                   <span>{point.period}*</span>
                 </div>
@@ -220,9 +230,11 @@ export function Charts({
           <span>
             <i className="legend-square demand" /> Casos
           </span>
-          <span>
-            <i className="legend-square capacity" /> Atenciones
-          </span>
+          {hasCapacityData && (
+            <span>
+              <i className="legend-square capacity" /> Atenciones
+            </span>
+          )}
           {forecastPoints.length > 0 && (
             <span>
               <i className="legend-square projected" /> *Proyección 5 años
@@ -236,6 +248,7 @@ export function Charts({
       </section>
 
       {dynamicBreakdowns.map((breakdown, bdIdx) => {
+        const displayLabel = humanizeColumnLabel(breakdown.label)
         const top = breakdown.items[0]
         const maxCatCases = Math.max(...breakdown.items.map((item) => item.cases), 1)
         const barColorClass =
@@ -254,16 +267,13 @@ export function Charts({
           <section className="panel chart-panel dynamic-chart-panel" key={breakdown.key}>
             <div className="panel-heading compact">
               <div>
-                <span className="eyebrow">
-                  DESGLOSE DINÁMICO <span className="eyebrow-slash">/</span> {breakdown.label.toUpperCase()}
-                </span>
                 <h2>
                   {top
-                    ? `${top.name} concentra el ${top.sharePct}% en ${breakdown.label}`
-                    : `Sin registros en ${breakdown.label}`}
+                    ? `${top.name} concentra el ${top.sharePct}% en ${displayLabel}`
+                    : `Sin registros en ${displayLabel}`}
                 </h2>
                 <p>
-                  {breakdown.totalCategories} categorías detectadas · escala desde 0
+                  {displayLabel} · {breakdown.totalCategories} categorías
                 </p>
               </div>
               <span className="axis-tag">
@@ -304,10 +314,7 @@ export function Charts({
         <section className="panel tier-panel">
           <div className="panel-heading compact">
             <div>
-              <span className="eyebrow">
-                MÉTRICAS ADICIONALES DEL ARCHIVO <span className="eyebrow-slash">/</span> RESUMEN
-              </span>
-              <h2>Indicadores numéricos detectados en las columnas del libro</h2>
+              <h2>Indicadores numéricos del archivo</h2>
               <p>Los promedios conservan el 0 y excluyen N/A o valores faltantes</p>
             </div>
             <span className="axis-tag">{dynamicMetrics.length} métricas</span>
@@ -315,7 +322,7 @@ export function Charts({
           <div className="dynamic-metrics-grid">
             {dynamicMetrics.map((metric) => (
               <div className="dynamic-metric-card" key={metric.key}>
-                <span>{metric.label}</span>
+                <span>{humanizeColumnLabel(metric.label)}</span>
                 <strong>{metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin datos válidos"}</strong>
                 <small>
                   Suma: {fmt(metric.sum)} · Rango: {metric.min !== null ? fmt(metric.min) : "—"} a{" "}
@@ -333,44 +340,47 @@ export function Charts({
       <section className="panel tier-panel">
         <div className="panel-heading compact">
           <div>
-            <span className="eyebrow">
-              COBERTURA TERRITORIAL Y CALIDAD <span className="eyebrow-slash">/</span> 04
-            </span>
             <h2>
               {!hasCapacityData
-                ? `${summaries.length} grupos territoriales en el archivo activo`
+                ? `${summaries.length} municipios con registros activos`
                 : tierStats[0].count > 0
-                  ? `${tierStats[0].count} municipios requieren atención prioritaria`
-                  : "Sin municipios en saturación crítica en la selección"}
+                  ? `${tierStats[0].count} municipios en atención prioritaria`
+                  : "Sin municipios en saturación crítica"}
             </h2>
-            <p>Distribución de municipios por clasificación operativa y volumen acumulado</p>
+            <p>
+              {hasCapacityData
+                ? "Distribución por clasificación operativa y volumen acumulado"
+                : "Resumen de cobertura territorial y calidad del corte"}
+            </p>
           </div>
           <span className="axis-tag">{summaries.length} municipios</span>
         </div>
-        <div className="tier-bars">
-          {tierStats.map((tier) => {
-            const width = tier.count === 0 ? 0 : Math.max(4, (tier.count / maxTierCount) * 100)
-            return (
-              <div className="tier-row" key={tier.color}>
-                <div className="tier-meta">
-                  <span className={`status-pill ${tier.color}`}>
-                    <i /> {tier.title}
-                  </span>
-                  <small>{tier.hint}</small>
+        {hasCapacityData && (
+          <div className="tier-bars">
+            {tierStats.map((tier) => {
+              const width = tier.count === 0 ? 0 : Math.max(4, (tier.count / maxTierCount) * 100)
+              return (
+                <div className="tier-row" key={tier.color}>
+                  <div className="tier-meta">
+                    <span className={`status-pill ${tier.color}`}>
+                      <i /> {tier.title}
+                    </span>
+                    <small>{tier.hint}</small>
+                  </div>
+                  <div className="tier-track">
+                    <span className={`tier-fill ${tier.color}`} style={{ width: `${width}%` }} />
+                  </div>
+                  <div className="tier-numbers">
+                    <b>{tier.count} mun.</b>
+                    <small>
+                      {fmt(tier.cases)} c. / {fmt(tier.capacity)} at.
+                    </small>
+                  </div>
                 </div>
-                <div className="tier-track">
-                  <span className={`tier-fill ${tier.color}`} style={{ width: `${width}%` }} />
-                </div>
-                <div className="tier-numbers">
-                  <b>{tier.count} mun.</b>
-                  <small>
-                    {fmt(tier.cases)} c. / {fmt(tier.capacity)} at.
-                  </small>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
         <div className="tier-quality-strip">
           <span>
             <TrendingUp size={13} /> Variación anual estimada:{" "}

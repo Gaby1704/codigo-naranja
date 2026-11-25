@@ -15,7 +15,10 @@ type BoardState = {
 const BoardContext = createContext<BoardState | null>(null)
 
 const initialFilters: Filters = {
-  period: labels.defaultPeriod,
+  period: "",
+  year: "",
+  month: "Todos",
+  day: "Todos",
   municipality: labels.allZones,
   violence: labels.allViolence,
   service: labels.allServices,

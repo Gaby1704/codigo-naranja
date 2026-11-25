@@ -2,6 +2,8 @@ import { Check, ChevronDown, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
+export type SelectOption = string | { value: string; label: string }
+
 function fold(text: string): string {
   return text
     .normalize("NFD")
@@ -18,7 +20,7 @@ export function SearchableSelect({
   searchPlaceholder = "Buscar opción…",
 }: {
   value: string
-  options: string[]
+  options: SelectOption[]
   onChange: (next: string) => void
   ariaLabel: string
   searchPlaceholder?: string
@@ -36,11 +38,21 @@ export function SearchableSelect({
     openUp: false,
   })
 
+  const normalizedOptions = useMemo(
+    () => options.map((opt) => (typeof opt === "string" ? { value: opt, label: opt } : opt)),
+    [options],
+  )
+
+  const selectedLabel = useMemo(
+    () => normalizedOptions.find((opt) => opt.value === value)?.label ?? value,
+    [normalizedOptions, value],
+  )
+
   const filtered = useMemo(() => {
     const q = fold(query)
-    if (!q) return options
-    return options.filter((opt) => fold(opt).includes(q))
-  }, [options, query])
+    if (!q) return normalizedOptions
+    return normalizedOptions.filter((opt) => fold(opt.label).includes(q) || fold(opt.value).includes(q))
+  }, [normalizedOptions, query])
 
   const updatePosition = () => {
     const el = triggerRef.current
@@ -48,7 +60,7 @@ export function SearchableSelect({
     const rect = el.getBoundingClientRect()
     const viewportW = window.innerWidth
     const viewportH = window.innerHeight
-    const menuWidth = Math.min(Math.max(rect.width, 220), viewportW - 16)
+    const menuWidth = Math.min(Math.max(rect.width, 190), viewportW - 16)
     const left = Math.max(8, Math.min(rect.left, viewportW - menuWidth - 8))
     const spaceBelow = viewportH - rect.bottom
     const openUp = spaceBelow < 230 && rect.top > spaceBelow
@@ -59,7 +71,7 @@ export function SearchableSelect({
   useEffect(() => {
     if (!open) return
     updatePosition()
-    setHighlighted(Math.max(0, filtered.indexOf(value)))
+    setHighlighted(Math.max(0, filtered.findIndex((item) => item.value === value)))
     const timer = window.setTimeout(() => searchRef.current?.focus(), 10)
     const handleOutside = (event: MouseEvent) => {
       const target = event.target as Node
@@ -86,8 +98,8 @@ export function SearchableSelect({
     setHighlighted(0)
   }, [query])
 
-  function selectOption(option: string) {
-    onChange(option)
+  function selectOption(optionValue: string) {
+    onChange(optionValue)
     setOpen(false)
     triggerRef.current?.focus()
   }
@@ -105,7 +117,7 @@ export function SearchableSelect({
       setHighlighted((prev) => Math.max(0, prev - 1))
     } else if (event.key === "Enter" && filtered[highlighted]) {
       event.preventDefault()
-      selectOption(filtered[highlighted])
+      selectOption(filtered[highlighted].value)
     }
   }
 
@@ -120,7 +132,7 @@ export function SearchableSelect({
         aria-label={ariaLabel}
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span className="s2-value">{value}</span>
+        <span className="s2-value">{selectedLabel}</span>
         <ChevronDown size={14} className="s2-arrow" />
       </button>
       {open &&
@@ -165,21 +177,21 @@ export function SearchableSelect({
                 <li className="s2-empty">Sin coincidencias</li>
               ) : (
                 filtered.map((option, idx) => {
-                  const isSelected = option === value
+                  const isSelected = option.value === value
                   const isHighlighted = idx === highlighted
                   return (
                     <li
-                      key={option}
+                      key={option.value}
                       role="option"
                       aria-selected={isSelected}
                       className={`s2-option ${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`}
                       onMouseEnter={() => setHighlighted(idx)}
                       onMouseDown={(event) => {
                         event.preventDefault()
-                        selectOption(option)
+                        selectOption(option.value)
                       }}
                     >
-                      <span>{option}</span>
+                      <span>{option.label}</span>
                       {isSelected && <Check size={13} />}
                     </li>
                   )

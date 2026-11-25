@@ -24,6 +24,19 @@ class Classification(BaseModel):
     color: Literal["priority", "elevated", "watch", "stable"]
 
 
+class MunicipalityViolenceItem(BaseModel):
+    name: str
+    cases: float
+    records: int
+
+
+class MunicipalityYearItem(BaseModel):
+    year: str
+    cases: float
+    delta: float | None
+    deltaPct: float | None
+
+
 class Summary(BaseModel):
     name: str
     cases: float
@@ -42,6 +55,8 @@ class Summary(BaseModel):
     capacityMissingCount: int
     avgCasesPerRecord: float | None
     avgCapacityPerRecord: float | None
+    violenceBreakdown: list[MunicipalityViolenceItem] = []
+    yearlyTrend: list[MunicipalityYearItem] = []
     classification: Classification
 
 
@@ -142,6 +157,10 @@ class Source(BaseModel):
 
 class DashboardResponse(BaseModel):
     periods: list[str]
+    years: list[str] = []
+    months: list[str] = []
+    days: list[str] = []
+    appliedYear: str = ""
     municipalities: list[str]
     violenceTypes: list[str]
     serviceTypes: list[str]

@@ -6,6 +6,9 @@ export const product = constants.product
 
 export const allFilters = {
   period: filters.allPeriods,
+  year: "Todos",
+  month: "Todos",
+  day: "Todos",
   municipality: filters.allZones,
   violence: filters.allViolence,
   service: filters.allServices,
@@ -13,6 +16,9 @@ export const allFilters = {
 
 export type Filters = {
   period: string
+  year: string
+  month: string
+  day: string
   municipality: string
   violence: string
   service: string

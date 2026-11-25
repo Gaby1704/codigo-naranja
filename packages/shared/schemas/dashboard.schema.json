@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": [
     "periods",
+    "years",
+    "months",
+    "days",
+    "appliedYear",
     "municipalities",
     "violenceTypes",
     "serviceTypes",
@@ -33,6 +37,10 @@
   ],
   "properties": {
     "periods": { "type": "array", "items": { "type": "string" } },
+    "years": { "type": "array", "items": { "type": "string" } },
+    "months": { "type": "array", "items": { "type": "string" } },
+    "days": { "type": "array", "items": { "type": "string" } },
+    "appliedYear": { "type": "string" },
     "municipalities": { "type": "array", "items": { "type": "string" } },
     "violenceTypes": { "type": "array", "items": { "type": "string" } },
     "serviceTypes": { "type": "array", "items": { "type": "string" } },
@@ -123,6 +131,27 @@
         "missingCount": { "type": "integer", "minimum": 0 }
       }
     },
+    "municipalityViolenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cases", "records"],
+      "properties": {
+        "name": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "records": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "municipalityYearItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["year", "cases", "delta", "deltaPct"],
+      "properties": {
+        "year": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "delta": { "type": ["number", "null"] },
+        "deltaPct": { "type": ["number", "null"] }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -144,6 +173,8 @@
         "capacityMissingCount",
         "avgCasesPerRecord",
         "avgCapacityPerRecord",
+        "violenceBreakdown",
+        "yearlyTrend",
         "classification"
       ],
       "properties": {
@@ -164,6 +195,8 @@
         "capacityMissingCount": { "type": "integer", "minimum": 0 },
         "avgCasesPerRecord": { "type": ["number", "null"] },
         "avgCapacityPerRecord": { "type": ["number", "null"] },
+        "violenceBreakdown": { "type": "array", "items": { "$ref": "#/$defs/municipalityViolenceItem" } },
+        "yearlyTrend": { "type": "array", "items": { "$ref": "#/$defs/municipalityYearItem" } },
         "classification": { "$ref": "#/$defs/classification" }
       }
     },

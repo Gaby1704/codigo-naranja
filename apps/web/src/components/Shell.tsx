@@ -1,4 +1,4 @@
-import { Activity, CalendarDays, ChevronDown, CircleHelp, LockKeyhole, LogIn, LogOut, ShieldCheck, SlidersHorizontal, X } from "lucide-react"
+import { Activity, CalendarDays, CircleHelp, LockKeyhole, LogIn, LogOut, ShieldCheck, SlidersHorizontal, X } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom"
 import { getMe, login, logout } from "../api"
@@ -58,27 +58,22 @@ export function Shell() {
         </div>
       </header>
       <section className="page-intro" id="inicio">
-        <div>
-          <div className="eyebrow">
-            <span className="orange-line" /> INTELIGENCIA TERRITORIAL <span className="eyebrow-slash">/</span> BANAVIM · TLAXCALA
-          </div>
-          <h1>
-            Mapa de Saturación <span>&amp; Cobertura</span>
-          </h1>
-        </div>
+        <h1>
+          Mapa de saturación <span>y cobertura</span>
+        </h1>
         <p className="intro-summary">
-          Demanda institucional y capacidad de servicios por municipio del hecho, distinguiendo expediente único, casos y seguimientos.
+          Demanda institucional y cobertura municipal en Tlaxcala.
         </p>
       </section>
       {qualityOpen && (
         <div className="quality-panel">
           <ShieldCheck size={18} />
           <div>
-            <b>Criterios de calidad, esquema y cobertura</b>
+            <b>Calidad y cobertura de datos</b>
             <p>
               {audit
-                ? `${audit.valid} registros válidos de ${audit.processed} leídos (${audit.removed} vacíos, duplicados exactos o incoherentes descartados). ${audit.uniquePeople} expedientes/personas únicas (${audit.multiCasePeople} con múltiples casos o seguimientos sin duplicar persona). Celdas conservadas: ${audit.zeroValues} con valor 0, ${audit.notApplicable} marcadas como N/A (excluidas de promedios) y ${audit.missingValues} datos faltantes.`
-                : "La limpieza pesada se realiza fuera del tablero. Un mayor volumen territorial refleja cercanía institucional o capacidad de registro, no mayor incidencia poblacional."}
+                ? `${audit.valid} registros válidos de ${audit.processed} (${audit.removed} descartados). ${audit.uniquePeople} personas únicas (${audit.multiCasePeople} con múltiples seguimientos). Ceros: ${audit.zeroValues} · N/A: ${audit.notApplicable} · Faltantes: ${audit.missingValues}.`
+                : "Los datos reflejan registros institucionales; mayor volumen indica cercanía o cobertura, no mayor incidencia poblacional."}
             </p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={() => setQualityOpen(false)}>
@@ -98,8 +93,11 @@ export function Shell() {
         <span className="tabs-spacer" />
         <span className="period-chip">
           <CalendarDays size={13} />
-          {filters.period === "Todos los periodos" ? "Todos los periodos" : `Corte ${filters.period}`}
-          <ChevronDown size={13} />
+          {(() => {
+            const yr = filters.year || data?.appliedYear || "Todos"
+            const parts = [yr !== "Todos" ? yr : "", filters.month !== "Todos" ? `M${filters.month}` : "", filters.day !== "Todos" ? `D${filters.day}` : ""].filter(Boolean)
+            return parts.length > 0 ? `Corte ${parts.join("-")}` : "Todos los periodos"
+          })()}
         </span>
       </nav>
       <Outlet />

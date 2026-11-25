@@ -6,6 +6,19 @@ export type Classification = {
   color: ClassificationColor
 }
 
+export type MunicipalityViolenceItem = {
+  name: string
+  cases: number
+  records: number
+}
+
+export type MunicipalityYearItem = {
+  year: string
+  cases: number
+  delta: number | null
+  deltaPct: number | null
+}
+
 export type Summary = {
   name: string
   cases: number
@@ -24,6 +37,8 @@ export type Summary = {
   capacityMissingCount: number
   avgCasesPerRecord: number | null
   avgCapacityPerRecord: number | null
+  violenceBreakdown: MunicipalityViolenceItem[]
+  yearlyTrend: MunicipalityYearItem[]
   classification: Classification
 }
 
@@ -124,6 +139,10 @@ export type DashboardSource = {
 
 export type Dashboard = {
   periods: string[]
+  years: string[]
+  months: string[]
+  days: string[]
+  appliedYear: string
   municipalities: string[]
   violenceTypes: string[]
   serviceTypes: string[]

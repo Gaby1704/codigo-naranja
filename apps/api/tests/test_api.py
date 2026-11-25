@@ -161,6 +161,37 @@ def test_login_upload_and_dynamic_validation(client: TestClient) -> None:
     assert any(item["label"] == "Tiempo_respuesta_hrs" for item in board["dynamicMetrics"])
     assert board["source"]["synthetic"] is False
 
+    # Filtrado flexible por año, mes y día sobre fechas completas
+    dated_book = Workbook()
+    ds = dated_book.active
+    ds.title = "Fechas"
+    ds.append(["Municipio", "Fecha_registro", "Tipo_violencia", "Servicio", "Expediente"])
+    ds.append(["Apizaco", "2024-01-10", "Física", "Jurídica", "E-1"])
+    ds.append(["Apizaco", "2025-01-10", "Psicológica", "Psicología", "E-2"])
+    ds.append(["Tlaxcala", "2025-02-15", "Económica", "Trabajo social", "E-3"])
+    buf = BytesIO()
+    dated_book.save(buf)
+    up2 = client.post(
+        "/api/datasets/uploads",
+        headers=HEADERS,
+        files={"file": ("fechas.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    ).json()
+    client.post(
+        f"/api/datasets/uploads/{up2['uploadId']}/apply",
+        headers=HEADERS,
+        json={"sheet": "Fechas", "mapping": up2["suggestedMapping"]},
+    )
+
+    by_month = client.get("/api/dashboard", params={"month": "01"}).json()
+    assert by_month["totalCases"] == 2
+    by_day = client.get("/api/dashboard", params={"day": "10"}).json()
+    assert by_day["totalCases"] == 2
+    by_ymd = client.get("/api/dashboard", params={"year": "2025", "month": "01", "day": "10"}).json()
+    assert by_ymd["totalCases"] == 1
+    assert by_ymd["years"] == ["2024", "2025"]
+    assert by_ymd["months"] == ["01", "02"]
+    assert by_ymd["days"] == ["10", "15"]
+
     assert client.post("/api/auth/logout", headers=HEADERS).status_code == 204
     assert client.get("/api/auth/me").json()["user"] is None
     blocked = client.post(

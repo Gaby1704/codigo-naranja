@@ -4,7 +4,31 @@ from app.services.constants import load_constants
 from app.services.rules import classify, is_period_incomplete, natural_key, normalize
 
 _YEAR_RE = re.compile(r"^\d{4}$")
+_ANY_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+_YMD_RE = re.compile(r"^((?:19|20)\d{2})[-/](\d{1,2})(?:[-/](\d{1,2}))?(?:\b|T|\s)")
+_DMY_RE = re.compile(r"^(\d{1,2})[-/](\d{1,2})[-/]((?:19|20)\d{2})(?:\b|\s)")
 _TEMPORAL_HINTS = ("MES", "FECHA", "TRIMESTRE", "PERIODO", "ANIO", "ANO", "SEMANA", "DIA")
+
+
+def _extract_date_parts(period_val: str, event_date_val: str = "") -> tuple[str, str, str]:
+    for raw in (period_val, event_date_val):
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        m_ymd = _YMD_RE.match(text)
+        if m_ymd:
+            yr, mo, dy = m_ymd.group(1), m_ymd.group(2).zfill(2), (m_ymd.group(3) or "").zfill(2) if m_ymd.group(3) else ""
+            if 1 <= int(mo) <= 12 and (not dy or 1 <= int(dy) <= 31):
+                return yr, mo, dy
+        m_dmy = _DMY_RE.match(text)
+        if m_dmy:
+            dy, mo, yr = m_dmy.group(1).zfill(2), m_dmy.group(2).zfill(2), m_dmy.group(3)
+            if 1 <= int(mo) <= 12 and 1 <= int(dy) <= 31:
+                return yr, mo, dy
+        m_yr = _ANY_YEAR_RE.search(text)
+        if m_yr:
+            return m_yr.group(1), "", ""
+    return "", "", ""
 _STATUS_HINTS = ("ESTADO", "ESTATUS", "NIVEL", "RIESGO", "ALERTA", "CLASIFIC", "SEM")
 
 
@@ -234,8 +258,29 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     has_residence_distinction = any(bool(row.get("residence_zone")) for row in records)
     has_event_date_distinction = any(bool(row.get("event_date")) for row in records)
 
-    def selected(row: dict) -> bool:
-        if filters["period"] != labels["allPeriods"] and row["period"] != filters["period"]:
+    row_parts = [_extract_date_parts(row.get("period", ""), row.get("event_date", "")) for row in records]
+    years = sorted({yr for yr, _mo, _dy in row_parts if yr}, key=natural_key)
+    months = sorted({mo for _yr, mo, _dy in row_parts if mo}, key=natural_key)
+    days = sorted({dy for _yr, _mo, dy in row_parts if dy}, key=natural_key)
+
+    filter_year = filters.get("year") or "Todos"
+    filter_month = filters.get("month") or "Todos"
+    filter_day = filters.get("day") or "Todos"
+    if filter_month not in {"Todos", ""} and filter_month.isdigit():
+        filter_month = filter_month.zfill(2)
+    if filter_day not in {"Todos", ""} and filter_day.isdigit():
+        filter_day = filter_day.zfill(2)
+
+    def selected(row: dict, parts: tuple[str, str, str]) -> bool:
+        yr, mo, dy = parts
+        if filters["period"] != labels["allPeriods"]:
+            if row["period"] != filters["period"] and yr != filters["period"]:
+                return False
+        if filter_year not in {"Todos", ""} and yr != filter_year:
+            return False
+        if filter_month not in {"Todos", ""} and mo != filter_month:
+            return False
+        if filter_day not in {"Todos", ""} and dy != filter_day:
             return False
         if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
             return False
@@ -245,7 +290,20 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             return False
         return True
 
-    filtered = [row for row in records if selected(row)]
+    filtered = [row for row, parts in zip(records, row_parts) if selected(row, parts)]
+
+    zone_year_cases: dict[str, dict[str, float]] = {}
+    for row, parts in zip(records, row_parts):
+        if filters["violence"] != labels["allViolence"] and row["violence"] != filters["violence"]:
+            continue
+        if filters["service"] != labels["allServices"] and row["service"] != filters["service"]:
+            continue
+        year_key = parts[0] or str(row.get("period") or "").strip() or labels["unspecified"]
+        ymap = zone_year_cases.setdefault(row["zone"], {})
+        if row["cases"] is not None:
+            ymap[year_key] = ymap.get(year_key, 0.0) + float(row["cases"])
+        else:
+            ymap.setdefault(year_key, ymap.get(year_key, 0.0))
 
     residence_cases_by_zone: dict[str, float] = {}
     for row in filtered:
@@ -277,9 +335,15 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "cap_zero": 0,
                 "cap_na": 0,
                 "cap_missing": 0,
+                "violence": {},
             },
         )
         bucket["count"] += 1
+        vtype = str(row.get("violence") or labels["unspecified"]).strip() or labels["unspecified"]
+        vbucket = bucket["violence"].setdefault(vtype, {"name": vtype, "cases": 0.0, "records": 0})
+        vbucket["records"] += 1
+        if row["cases"] is not None:
+            vbucket["cases"] += float(row["cases"])
         pid = row.get("person_id") or ""
         if pid:
             bucket["people"].add(pid)
@@ -332,6 +396,27 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             if has_capacity_data
             else {"label": "Sin dato de cobertura", "action": "Consultar registros", "color": "stable"}
         )
+        v_breakdown = sorted(
+            bucket["violence"].values(),
+            key=lambda item: (item["cases"], item["records"]),
+            reverse=True,
+        )[:6]
+
+        year_map = zone_year_cases.get(bucket["name"], {})
+        sorted_years = sorted(year_map.keys(), key=natural_key)[-6:]
+        yearly_trend: list[dict] = []
+        prev_cases: float | None = None
+        for yr in sorted_years:
+            yr_cases = round(year_map[yr], 2)
+            if prev_cases is None:
+                delta = None
+                delta_pct = None
+            else:
+                delta = round(yr_cases - prev_cases, 2)
+                delta_pct = round((delta / prev_cases) * 100, 1) if prev_cases > 0 else None
+            yearly_trend.append({"year": yr, "cases": yr_cases, "delta": delta, "deltaPct": delta_pct})
+            prev_cases = yr_cases
+
         summaries.append(
             {
                 "name": bucket["name"],
@@ -351,21 +436,24 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "capacityMissingCount": bucket["cap_missing"],
                 "avgCasesPerRecord": avg_cases,
                 "avgCapacityPerRecord": avg_cap,
+                "violenceBreakdown": v_breakdown,
+                "yearlyTrend": yearly_trend,
                 "classification": classification,
             }
         )
     summaries.sort(key=lambda item: (item["ratio"], item["cases"]), reverse=True)
 
-    trend_scope = [
-        row
-        for row in records
-        if filters["municipality"] == labels["allZones"] or row["zone"] == filters["municipality"]
-    ]
-    all_trends = []
-    for period in periods:
-        subset = [row for row in trend_scope if row["period"] == period]
-        if not subset:
+    use_yearly_buckets = len(periods) > 6 and len(years) >= 2
+    trend_buckets: dict[str, list[dict]] = {}
+    for row, parts in zip(records, row_parts):
+        if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
             continue
+        key = (parts[0] or row["period"]) if use_yearly_buckets else row["period"]
+        trend_buckets.setdefault(key, []).append(row)
+
+    all_trends = []
+    for period in sorted(trend_buckets.keys(), key=natural_key):
+        subset = trend_buckets[period]
         is_complete = all(row.get("period_complete", 1) == 1 for row in subset) and not is_period_incomplete(period)
         period_people = {row["person_id"] for row in subset if row.get("person_id")}
         all_trends.append(
@@ -386,6 +474,10 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
 
     return {
         "periods": periods,
+        "years": years,
+        "months": months,
+        "days": days,
+        "appliedYear": filter_year,
         "municipalities": municipalities,
         "violenceTypes": violence_types,
         "serviceTypes": service_types,
