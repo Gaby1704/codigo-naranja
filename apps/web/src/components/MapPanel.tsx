@@ -319,8 +319,8 @@ function MapHoverCard({
   hasPersonIds: boolean
   hasCapacityData: boolean
 }) {
-  const cardWidth = 320
-  const estimatedHeight = summary ? 275 : 95
+  const cardWidth = 325
+  const estimatedHeight = summary ? 315 : 95
   const vw = window.innerWidth
   const vh = window.innerHeight
   const spaceRight = vw - anchorX
@@ -339,6 +339,8 @@ function MapHoverCard({
   const lastYear = years.at(-1)
   const lastDelta = lastYear?.delta ?? null
   const lastDeltaPct = lastYear?.deltaPct ?? null
+  const undatedCases = summary?.undatedCases ?? 0
+  const datedSum = years.reduce((acc, item) => acc + item.cases, 0)
 
   return createPortal(
     <div
@@ -370,7 +372,7 @@ function MapHoverCard({
               <p className="mhc-empty">Sin desglose disponible.</p>
             ) : (
               <div className="mhc-bars">
-                {violence.slice(0, 5).map((item) => {
+                {violence.map((item) => {
                   const pct = item.cases === 0 ? 0 : Math.max(4, (item.cases / maxV) * 100)
                   return (
                     <div className="mhc-bar-row" key={item.name}>
@@ -406,30 +408,37 @@ function MapHoverCard({
             {years.length === 0 ? (
               <p className="mhc-empty">Sin serie anual disponible.</p>
             ) : (
-              <div className="mhc-years">
-                {years.map((yr) => {
-                  const h = yr.cases === 0 ? 0 : Math.max(6, (yr.cases / maxY) * 100)
-                  const deltaTone = yr.delta === null ? "" : yr.delta > 0 ? "up" : yr.delta < 0 ? "down" : "flat"
-                  return (
-                    <div className="mhc-year-col" key={yr.year}>
-                      <span className="mhc-year-val">{fmt(yr.cases)}</span>
-                      <div className="mhc-year-bar-wrap">
-                        <i className={`mhc-year-bar ${deltaTone}`} style={{ height: `${h}%` }} />
+              <>
+                <div className="mhc-years">
+                  {years.map((yr) => {
+                    const h = yr.cases === 0 ? 0 : Math.max(6, (yr.cases / maxY) * 100)
+                    const deltaTone = yr.delta === null ? "" : yr.delta > 0 ? "up" : yr.delta < 0 ? "down" : "flat"
+                    return (
+                      <div className="mhc-year-col" key={yr.year}>
+                        <span className="mhc-year-val">{fmt(yr.cases)}</span>
+                        <div className="mhc-year-bar-wrap">
+                          <i className={`mhc-year-bar ${deltaTone}`} style={{ height: `${h}%` }} />
+                        </div>
+                        <span className="mhc-year-lbl">{yr.year}</span>
+                        <span className={`mhc-year-chg ${deltaTone}`}>
+                          {yr.delta === null
+                            ? "base"
+                            : yr.delta > 0
+                              ? `↑ ${fmt(yr.delta)}`
+                              : yr.delta < 0
+                                ? `↓ ${fmt(Math.abs(yr.delta))}`
+                                : "0"}
+                        </span>
                       </div>
-                      <span className="mhc-year-lbl">{yr.year}</span>
-                      <span className={`mhc-year-chg ${deltaTone}`}>
-                        {yr.delta === null
-                          ? "base"
-                          : yr.delta > 0
-                            ? `↑ ${fmt(yr.delta)}`
-                            : yr.delta < 0
-                              ? `↓ ${fmt(Math.abs(yr.delta))}`
-                              : "0"}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+                {undatedCases > 0 && (
+                  <p className="mhc-empty">
+                    {fmt(datedSum)} con fecha · +{fmt(undatedCases)} sin fecha registrada
+                  </p>
+                )}
+              </>
             )}
           </div>
         </>

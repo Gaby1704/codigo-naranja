@@ -46,6 +46,7 @@ export type Summary = {
   avgCapacityPerRecord: number | null
   violenceBreakdown: MunicipalityViolenceItem[]
   yearlyTrend: MunicipalityYearItem[]
+  undatedCases?: number
   extraMetrics?: Record<string, SummaryExtraMetric>
   extraDimensions?: Record<string, string>
   classification: Classification
@@ -184,6 +185,7 @@ export type Dashboard = {
   naCasesCount: number
   missingCapacityCount: number
   naCapacityCount: number
+  undatedCasesCount?: number
   priorityCount: number
   dimensionLabels: DimensionLabels
   extraDimensions: string[]

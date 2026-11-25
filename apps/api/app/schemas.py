@@ -64,6 +64,7 @@ class Summary(BaseModel):
     avgCapacityPerRecord: float | None
     violenceBreakdown: list[MunicipalityViolenceItem] = []
     yearlyTrend: list[MunicipalityYearItem] = []
+    undatedCases: float = 0.0
     extraMetrics: dict[str, SummaryExtraMetric] = {}
     extraDimensions: dict[str, str] = {}
     classification: Classification
@@ -202,6 +203,7 @@ class DashboardResponse(BaseModel):
     naCasesCount: int
     missingCapacityCount: int
     naCapacityCount: int
+    undatedCasesCount: float = 0.0
     priorityCount: int
     dimensionLabels: DimensionLabels
     extraDimensions: list[str] = []

@@ -410,7 +410,8 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             return False
         return True
 
-    filtered = [row for row, parts in zip(records, row_parts) if selected(row, parts)]
+    filtered_pairs = [(row, parts) for row, parts in zip(records, row_parts) if selected(row, parts)]
+    filtered = [row for row, _ in filtered_pairs]
 
     zone_year_cases: dict[str, dict[str, float]] = {}
     for row, parts in zip(records, row_parts):
@@ -438,7 +439,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     missing_capacity_count = 0
     na_capacity_count = 0
 
-    for row in filtered:
+    for row, parts in filtered_pairs:
         bucket = grouped.setdefault(
             row["zone"],
             {
@@ -455,11 +456,19 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "cap_zero": 0,
                 "cap_na": 0,
                 "cap_missing": 0,
+                "undated_cases": 0.0,
                 "violence": {},
                 "extra_metrics_vals": {},
                 "extra_dim_counts": {},
             },
         )
+        year_part = parts[0] or (
+            str(row.get("period") or "").strip()
+            if str(row.get("period") or "").strip() not in {"", labels["unspecified"]}
+            else ""
+        )
+        if not year_part and row["cases"] is not None:
+            bucket["undated_cases"] += float(row["cases"])
         for col in extra_metrics:
             val = (row.get("extra_metrics") or {}).get(col)
             if val is not None:
@@ -527,11 +536,24 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             if has_capacity_data
             else {"label": "Sin dato de cobertura", "action": "Consultar registros", "color": "stable"}
         )
-        v_breakdown = sorted(
+        v_sorted = sorted(
             bucket["violence"].values(),
             key=lambda item: (item["cases"], item["records"]),
             reverse=True,
-        )[:6]
+        )
+        if len(v_sorted) > 7:
+            head = v_sorted[:6]
+            tail = v_sorted[6:]
+            v_breakdown = [
+                *head,
+                {
+                    "name": "OTROS",
+                    "cases": sum(item["cases"] for item in tail),
+                    "records": sum(item["records"] for item in tail),
+                },
+            ]
+        else:
+            v_breakdown = v_sorted
 
         year_map = zone_year_cases.get(bucket["name"], {})
         sorted_years = [yr for yr in sorted(year_map.keys(), key=natural_key) if yr != labels["unspecified"]][-6:]
@@ -569,6 +591,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "avgCapacityPerRecord": avg_cap,
                 "violenceBreakdown": v_breakdown,
                 "yearlyTrend": yearly_trend,
+                "undatedCases": round(bucket["undated_cases"], 2),
                 "extraMetrics": {
                     col: {
                         "avg": round(sum(vals) / len(vals), 2) if vals else None,
@@ -593,13 +616,14 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
 
     use_yearly_buckets = (len(periods) > 6 or any(mo for _yr, mo, _dy in row_parts)) and len(years) >= 2
     trend_buckets: dict[str, list[dict]] = {}
-    unspecified_period_count = 0
+    unspecified_period_cases = 0.0
     for row, parts in zip(records, row_parts):
         if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
             continue
         key = (parts[0] or row["period"]) if use_yearly_buckets else row["period"]
         if not key or key == labels["unspecified"]:
-            unspecified_period_count += 1
+            if row["cases"] is not None:
+                unspecified_period_cases += float(row["cases"])
             continue
         trend_buckets.setdefault(key, []).append(row)
 
@@ -664,6 +688,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         "naCasesCount": na_cases_count,
         "missingCapacityCount": missing_capacity_count,
         "naCapacityCount": na_capacity_count,
+        "undatedCasesCount": round(unspecified_period_cases, 2),
         "priorityCount": sum(1 for item in summaries if item["ratio"] >= rules["priorityRatio"]),
         "dimensionLabels": dim_labels,
         "extraDimensions": extra_dimensions,

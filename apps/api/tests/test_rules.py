@@ -163,6 +163,10 @@ def test_dato_completo_is_not_mapped_as_period_status_and_unspecified_excluded_f
     assert [t["period"] for t in board["trends"]] == ["2024", "2025"]
     assert board["forecast"]["available"] is True
     assert board["forecast"]["excludedIncompletePeriods"] == []
+    assert board["undatedCasesCount"] == 1.0
+    apizaco = board["summaries"][0]
+    assert sum(item["cases"] for item in apizaco["violenceBreakdown"]) == apizaco["cases"]
+    assert sum(item["cases"] for item in apizaco["yearlyTrend"]) + apizaco["undatedCases"] == apizaco["cases"]
 
 
 def test_dynamic_columns_like_edad_feed_charts_generalities_and_listings() -> None:

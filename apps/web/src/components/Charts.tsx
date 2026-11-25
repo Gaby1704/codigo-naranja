@@ -110,6 +110,7 @@ export function Charts({
   latestPeriod,
   missingTotal,
   naTotal,
+  undatedCases = 0,
   onSelect,
   onShowAll,
   onFilterBy,
@@ -124,6 +125,7 @@ export function Charts({
   latestPeriod: string
   missingTotal: number
   naTotal: number
+  undatedCases?: number
   onSelect: (name: string) => void
   onShowAll: () => void
   onFilterBy?: (field: "violence" | "service" | "period", value: string) => void
@@ -240,7 +242,9 @@ export function Charts({
               <i className="legend-square projected" /> *Proyección 5 años
             </span>
           )}
-          <span className="trend-note">Eje desde 0</span>
+          <span className="trend-note">
+            Eje desde 0{undatedCases > 0 ? ` · +${fmt(undatedCases)} sin fecha` : ""}
+          </span>
         </div>
         <p className="chart-footnote">
           Estimación lineal de tendencia a partir del histórico disponible; no representa predicción definitiva ni tasa poblacional.

@@ -391,6 +391,7 @@ export function DashboardView() {
             latestPeriod={data?.trends.at(-1)?.period ?? "—"}
             missingTotal={missingTotal}
             naTotal={naTotal}
+            undatedCases={data?.undatedCasesCount ?? 0}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
             onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}
             onFilterBy={(field, val) => setFilters({ ...filters, [field]: val })}
