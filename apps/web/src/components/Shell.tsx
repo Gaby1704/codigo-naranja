@@ -24,14 +24,10 @@ export function Shell() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#inicio" aria-label="Código Naranja by muegan-ing">
-          <span className="brand-mark">
-            <ShieldCheck size={20} />
-          </span>
+        <a className="brand" href="#inicio" aria-label="Código Naranja — Inteligencia para la seguridad de las mujeres">
+          <img className="brand-logo" src="/logo-codigo-naranja.jpg" alt="Código Naranja" />
+          <span className="brand-divider" aria-hidden="true" />
           <span className="brand-copy">
-            <b>
-              CÓDIGO <i>/</i> NARANJA
-            </b>
             <small>BY MUEGAN-ING · TLAXCALA</small>
           </span>
         </a>

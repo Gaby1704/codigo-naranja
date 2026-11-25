@@ -1,9 +1,11 @@
 import re
 
 from app.services.constants import load_constants
-from app.services.rules import classify, is_period_incomplete, natural_key
+from app.services.rules import classify, is_period_incomplete, natural_key, normalize
 
 _YEAR_RE = re.compile(r"^\d{4}$")
+_TEMPORAL_HINTS = ("MES", "FECHA", "TRIMESTRE", "PERIODO", "ANIO", "ANO", "SEMANA", "DIA")
+_STATUS_HINTS = ("ESTADO", "ESTATUS", "NIVEL", "RIESGO", "ALERTA", "CLASIFIC", "SEM")
 
 
 def _linear_slope(values: list[float]) -> tuple[float, float]:
@@ -29,22 +31,14 @@ def _build_forecast(all_trends: list[dict], summaries: list[dict]) -> dict:
 
     proposals = []
     if priority_zones:
-        proposals.append(
-            f"Desplegar unidad móvil prioritaria y ampliar cobertura presencial en {', '.join(priority_zones)}."
-        )
+        proposals.append(f"Reforzar la capacidad presencial en {', '.join(priority_zones)}.")
     else:
-        proposals.append("Mantener cobertura móvil preventiva y monitorear capacidad instalada por municipio.")
-
+        proposals.append("Monitorear la capacidad instalada por municipio.")
     if watch_zones:
-        proposals.append(
-            f"Activar jornadas de detección y muestreo territorial en {', '.join(watch_zones)} ante posible subregistro."
-        )
+        proposals.append(f"Fortalecer la detección temprana en {', '.join(watch_zones)} ante posible subregistro.")
     else:
-        proposals.append("Reforzar canales de detección temprana y vinculación institucional en zonas periféricas.")
-
-    proposals.append(
-        "Estandarizar seguimiento interinstitucional por expediente único para reducir reincidencia y brechas de atención."
-    )
+        proposals.append("Mantener la vinculación institucional en zonas periféricas.")
+    proposals.append("Estandarizar el seguimiento por expediente único.")
 
     if len(complete) < 2:
         return {
@@ -56,10 +50,7 @@ def _build_forecast(all_trends: list[dict], summaries: list[dict]) -> dict:
             "points": [],
             "completePeriodsUsed": [item["period"] for item in complete],
             "excludedIncompletePeriods": excluded,
-            "assumptions": (
-                "Se requieren al menos 2 periodos de corte completos para proyectar un escenario exploratorio a 5 años. "
-                "Las proyecciones nunca equivalen a incidencia poblacional."
-            ),
+            "assumptions": "Estimación lineal de tendencia a partir del histórico disponible; no representa predicción definitiva ni tasa poblacional.",
             "proposals": proposals,
         }
 
@@ -95,75 +86,129 @@ def _build_forecast(all_trends: list[dict], summaries: list[dict]) -> dict:
         "points": points,
         "completePeriodsUsed": [item["period"] for item in complete],
         "excludedIncompletePeriods": excluded,
-        "assumptions": (
-            "Escenario exploratorio lineal calculado únicamente sobre periodos completos disponibles "
-            "(excluye cortes incompletos). Supone continuidad de la capacidad de registro institucional; "
-            "no constituye certeza ni estimación poblacional."
-        ),
+        "assumptions": "Estimación lineal de tendencia a partir del histórico disponible; no representa predicción definitiva ni tasa poblacional.",
         "proposals": proposals,
     }
 
 
 def _build_mobile_route(summaries: list[dict]) -> list[dict]:
-    priority = sorted(
-        [item for item in summaries if item["classification"]["color"] == "priority"],
-        key=lambda item: (item["ratio"], item["cases"]),
-        reverse=True,
-    )
-    watch = sorted(
-        [item for item in summaries if item["classification"]["color"] == "watch"],
-        key=lambda item: (item["cases"], -item["ratio"]),
-    )
-    elevated = sorted(
-        [item for item in summaries if item["classification"]["color"] == "elevated"],
-        key=lambda item: (item["ratio"], item["cases"]),
-        reverse=True,
-    )
-
-    stops: list[dict] = []
-    for item in priority:
-        stops.append(
-            {
-                "zone": item["name"],
-                "rank": len(stops) + 1,
-                "intervention": "Unidad móvil prioritaria",
-                "reason": f"Brecha {round(item['ratio'] * 100)}% ({int(item['cases'])} casos / {int(item['capacity'])} atenciones)",
-                "cases": item["cases"],
-                "capacity": item["capacity"],
-                "ratio": item["ratio"],
-                "color": "priority",
-            }
-        )
-    for item in watch:
-        stops.append(
-            {
-                "zone": item["name"],
-                "rank": len(stops) + 1,
-                "intervention": "Jornada de detección y muestreo",
-                "reason": f"Posible subregistro ({int(item['cases'])} casos · baja cobertura relativa)",
-                "cases": item["cases"],
-                "capacity": item["capacity"],
-                "ratio": item["ratio"],
-                "color": "watch",
-            }
-        )
-    for item in elevated:
-        stops.append(
-            {
-                "zone": item["name"],
-                "rank": len(stops) + 1,
-                "intervention": "Jornada itinerante y turnos",
-                "reason": f"Demanda cercana al límite ({round(item['ratio'] * 100)}%)",
-                "cases": item["cases"],
-                "capacity": item["capacity"],
-                "ratio": item["ratio"],
-                "color": "elevated",
-            }
-        )
-    return stops[:10]
+    return []
 
 
-def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) -> dict:
+def _infer_kind(label: str) -> str:
+    folded = normalize(label)
+    if any(token in folded for token in _TEMPORAL_HINTS):
+        return "temporal"
+    if any(token in folded for token in _STATUS_HINTS):
+        return "status"
+    return "category"
+
+
+def _build_dynamic_breakdowns(
+    filtered: list[dict],
+    dim_labels: dict[str, str],
+    extra_dimensions: list[str],
+) -> list[dict]:
+    unspecified = load_constants()["filters"]["unspecified"]
+    breakdowns: list[dict] = []
+
+    def make_breakdown(key: str, label: str, filter_field: str | None, extractor) -> dict | None:
+        buckets: dict[str, dict] = {}
+        total_cases_sum = 0.0
+        for row in filtered:
+            raw_cat = extractor(row)
+            cat = str(raw_cat).strip() if raw_cat else unspecified
+            if not cat:
+                cat = unspecified
+            cases_val = float(row["cases"]) if row["cases"] is not None else 0.0
+            bucket = buckets.setdefault(cat, {"name": cat, "cases": 0.0, "records": 0})
+            bucket["cases"] += cases_val
+            bucket["records"] += 1
+            total_cases_sum += cases_val
+        if not buckets:
+            return None
+        meaningful = [name for name in buckets if name != unspecified]
+        if not meaningful:
+            return None
+        ordered = sorted(buckets.values(), key=lambda item: (item["cases"], item["records"]), reverse=True)
+        denom = total_cases_sum if total_cases_sum > 0 else sum(item["records"] for item in ordered)
+        items = [
+            {
+                "name": item["name"],
+                "cases": round(item["cases"], 2),
+                "records": item["records"],
+                "sharePct": round(((item["cases"] if total_cases_sum > 0 else item["records"]) / max(denom, 1)) * 100, 1),
+            }
+            for item in ordered[:8]
+        ]
+        return {
+            "key": key,
+            "label": label,
+            "kind": _infer_kind(label),
+            "filterField": filter_field,
+            "totalCategories": len(ordered),
+            "items": items,
+        }
+
+    for field, key in (("violence", "violence"), ("service", "service")):
+        bd = make_breakdown(key, dim_labels[key], field, lambda row, f=field: row.get(f))
+        if bd is not None:
+            breakdowns.append(bd)
+
+    for col in extra_dimensions:
+        bd = make_breakdown(
+            f"extra:{col}",
+            col,
+            None,
+            lambda row, c=col: (row.get("extra_dims") or {}).get(c, unspecified),
+        )
+        if bd is not None:
+            breakdowns.append(bd)
+        if len(breakdowns) >= 6:
+            break
+
+    return breakdowns
+
+
+def _build_dynamic_metrics(filtered: list[dict], extra_metrics: list[str]) -> list[dict]:
+    metrics: list[dict] = []
+    for col in extra_metrics:
+        values: list[float] = []
+        zero_count = 0
+        na_count = 0
+        missing_count = 0
+        for row in filtered:
+            val = (row.get("extra_metrics") or {}).get(col)
+            status = (row.get("extra_metric_statuses") or {}).get(col, "missing")
+            if val is not None:
+                fval = float(val)
+                values.append(fval)
+                if fval == 0.0:
+                    zero_count += 1
+            elif status == "na":
+                na_count += 1
+            else:
+                missing_count += 1
+        if not values and na_count == 0 and missing_count == 0:
+            continue
+        metrics.append(
+            {
+                "key": col,
+                "label": col,
+                "sum": round(sum(values), 2),
+                "avg": round(sum(values) / len(values), 2) if values else None,
+                "min": round(min(values), 2) if values else None,
+                "max": round(max(values), 2) if values else None,
+                "validCount": len(values),
+                "zeroCount": zero_count,
+                "naCount": na_count,
+                "missingCount": missing_count,
+            }
+        )
+    return metrics
+
+
+def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, metadata: dict | None = None) -> dict:
     labels = load_constants()["filters"]
     rules = load_constants()["classification"]
     periods = sorted({row["period"] for row in records}, key=natural_key)
@@ -171,10 +216,22 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
     violence_types = sorted({row["violence"] for row in records}, key=natural_key)
     service_types = sorted({row["service"] for row in records}, key=natural_key)
 
+    meta = metadata or {}
+    default_labels = {
+        "zone": "Municipio (hecho)",
+        "period": "Periodo de corte",
+        "violence": "Tipo de violencia",
+        "service": "Tipo de servicio",
+        "cases": "Casos registrados",
+        "capacity": "Atenciones / capacidad",
+    }
+    dim_labels = {**default_labels, **(meta.get("columnLabels") or {})}
+    extra_dimensions: list[str] = list(meta.get("extraDimensions") or [])
+    extra_metrics: list[str] = list(meta.get("extraMetrics") or [])
+
     has_person_ids = any(bool(row.get("person_id")) for row in records)
-    has_residence_distinction = any(
-        bool(row.get("residence_zone")) and row.get("residence_zone") != row["zone"] for row in records
-    ) or any(bool(row.get("residence_zone")) for row in records)
+    has_capacity_data = meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records)
+    has_residence_distinction = any(bool(row.get("residence_zone")) for row in records)
     has_event_date_distinction = any(bool(row.get("event_date")) for row in records)
 
     def selected(row: dict) -> bool:
@@ -251,14 +308,18 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
                 bucket["cap_zero"] += 1
         elif cap_status == "na":
             bucket["cap_na"] += 1
-            na_capacity_count += 1
+            if has_capacity_data:
+                na_capacity_count += 1
         else:
             bucket["cap_missing"] += 1
-            missing_capacity_count += 1
+            if has_capacity_data:
+                missing_capacity_count += 1
 
     summaries = []
     for bucket in grouped.values():
-        if bucket["capacity"] > 0:
+        if not has_capacity_data:
+            ratio = 0.0
+        elif bucket["capacity"] > 0:
             ratio = bucket["cases"] / bucket["capacity"]
         elif bucket["cases"] > 0:
             ratio = rules["missingCapacityRatio"]
@@ -266,6 +327,11 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
             ratio = 0.0
         avg_cases = round(bucket["cases"] / bucket["cases_valid"], 2) if bucket["cases_valid"] > 0 else None
         avg_cap = round(bucket["capacity"] / bucket["cap_valid"], 2) if bucket["cap_valid"] > 0 else None
+        classification = (
+            classify(ratio, bucket["cases"])
+            if has_capacity_data
+            else {"label": "Sin dato de cobertura", "action": "Consultar registros", "color": "stable"}
+        )
         summaries.append(
             {
                 "name": bucket["name"],
@@ -285,10 +351,10 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
                 "capacityMissingCount": bucket["cap_missing"],
                 "avgCasesPerRecord": avg_cases,
                 "avgCapacityPerRecord": avg_cap,
-                "classification": classify(ratio, bucket["cases"]),
+                "classification": classification,
             }
         )
-    summaries.sort(key=lambda item: item["ratio"], reverse=True)
+    summaries.sort(key=lambda item: (item["ratio"], item["cases"]), reverse=True)
 
     trend_scope = [
         row
@@ -315,6 +381,8 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
     trends = all_trends[-5:]
     forecast = _build_forecast(all_trends, summaries)
     mobile_route = _build_mobile_route(summaries)
+    dynamic_breakdowns = _build_dynamic_breakdowns(filtered, dim_labels, extra_dimensions)
+    dynamic_metrics = _build_dynamic_metrics(filtered, extra_metrics)
 
     return {
         "periods": periods,
@@ -328,6 +396,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
         "totalPeople": len(all_people),
         "totalRecords": len(filtered),
         "hasPersonIds": has_person_ids,
+        "hasCapacityData": has_capacity_data,
         "hasResidenceDistinction": has_residence_distinction,
         "hasEventDateDistinction": has_event_date_distinction,
         "missingCasesCount": missing_cases_count,
@@ -335,6 +404,9 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict) 
         "missingCapacityCount": missing_capacity_count,
         "naCapacityCount": na_capacity_count,
         "priorityCount": sum(1 for item in summaries if item["ratio"] >= rules["priorityRatio"]),
+        "dimensionLabels": dim_labels,
+        "dynamicBreakdowns": dynamic_breakdowns,
+        "dynamicMetrics": dynamic_metrics,
         "mobileRoute": mobile_route,
         "forecast": forecast,
         "source": source,

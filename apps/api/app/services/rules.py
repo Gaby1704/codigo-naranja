@@ -103,35 +103,73 @@ def canonical_zone(value: Any) -> str:
     return normalized
 
 
-def suggest_mapping(headers: list[str]) -> dict[str, str]:
+def _is_mostly_numeric(header: str, rows: list[dict[str, Any]]) -> bool:
+    if not rows:
+        return False
+    sample = [row.get(header) for row in rows[:80]]
+    non_empty = [val for val in sample if normalize(val) not in _MISSING_TOKENS]
+    if not non_empty:
+        return False
+    numeric_ok = 0
+    explicit_number = 0
+    for val in non_empty:
+        _, status = parse_numeric_cell(val)
+        if status in {"value", "zero"}:
+            explicit_number += 1
+            numeric_ok += 1
+        elif status == "na":
+            numeric_ok += 1
+    return explicit_number >= 1 and (numeric_ok / len(non_empty)) >= 0.7
+
+
+def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None) -> dict[str, str]:
     patterns = load_constants()["columns"]["patterns"]
     normalized = [(header, normalize(header)) for header in headers]
+    sample_rows = rows or []
 
-    def guess(field: str, fallback: bool, exclude: set[str] | None = None) -> str:
+    def guess(field: str, require_numeric: bool = False, exclude: set[str] | None = None) -> str:
         skip = exclude or set()
         for pattern in patterns[field]:
             for header, folded in normalized:
                 if header in skip:
                     continue
                 if pattern in folded:
+                    if require_numeric and sample_rows and not _is_mostly_numeric(header, sample_rows):
+                        continue
                     return header
-        if fallback and headers:
-            for header in headers:
-                if header not in skip:
-                    return header
-            return headers[0]
         return ""
 
-    zone = guess("zone", True)
-    residence = guess("residenceZone", False, exclude={zone})
-    period = guess("period", True, exclude={zone, residence})
-    event_date = guess("eventDate", False, exclude={zone, residence, period})
-    violence = guess("violence", True, exclude={zone, residence, period, event_date})
-    service = guess("service", True, exclude={zone, residence, period, event_date, violence})
-    cases = guess("cases", True, exclude={zone, residence, period, event_date, violence, service})
-    capacity = guess("capacity", True, exclude={zone, residence, period, event_date, violence, service, cases})
-    person = guess("person", False)
-    period_status = guess("periodStatus", False)
+    zone = guess("zone")
+    residence = guess("residenceZone", exclude={zone})
+    period = guess("period", exclude={zone, residence})
+    event_date = guess("eventDate", exclude={zone, residence, period})
+    violence = guess("violence", exclude={zone, residence, period, event_date})
+    service = guess("service", exclude={zone, residence, period, event_date, violence})
+    cases = guess("cases", require_numeric=True, exclude={zone, residence, period, event_date, violence, service})
+    capacity = guess("capacity", require_numeric=True, exclude={zone, residence, period, event_date, violence, service, cases})
+    person = guess("person")
+    period_status = guess("periodStatus")
+
+    if sample_rows:
+        used = {zone, residence, period, event_date, violence, service, cases, capacity, person, period_status} - {""}
+        if not zone:
+            for header in headers:
+                if header not in used and not _is_mostly_numeric(header, sample_rows):
+                    zone = header
+                    used.add(header)
+                    break
+        if not violence:
+            for header in headers:
+                if header not in used and not _is_mostly_numeric(header, sample_rows):
+                    violence = header
+                    used.add(header)
+                    break
+        if not service:
+            for header in headers:
+                if header not in used and not _is_mostly_numeric(header, sample_rows):
+                    service = header
+                    used.add(header)
+                    break
 
     return {
         "zone": zone,
@@ -147,12 +185,62 @@ def suggest_mapping(headers: list[str]) -> dict[str, str]:
     }
 
 
-def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Validate pre-processed rows for schema and coherence without discarding multi-case expedientes."""
+def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[str], list[str]]:
+    """Detect extra categorical/temporal/status dimensions and numeric metrics from unmapped Excel columns."""
+    if not rows:
+        return [], []
+    headers = list(rows[0].keys())
+    mapped_cols = {col for col in mapping.values() if col}
+    extra_dims: list[str] = []
+    extra_metrics: list[str] = []
+
+    for header in headers:
+        if header in mapped_cols:
+            continue
+        raw_vals = [row.get(header) for row in rows]
+        non_empty = [val for val in raw_vals if normalize(val) not in _MISSING_TOKENS]
+        if not non_empty:
+            continue
+
+        numeric_ok = 0
+        explicit_num = 0
+        for val in non_empty:
+            _, status = parse_numeric_cell(val)
+            if status in {"value", "zero"}:
+                numeric_ok += 1
+                explicit_num += 1
+            elif status == "na":
+                numeric_ok += 1
+        if explicit_num >= 1 and (numeric_ok / len(non_empty)) >= 0.75:
+            extra_metrics.append(header)
+            continue
+
+        distinct = {normalize(val) for val in non_empty if normalize(val) not in _NA_TOKENS}
+        if 1 <= len(distinct) <= 35 and (len(non_empty) <= 12 or len(distinct) / len(non_empty) <= 0.65):
+            extra_dims.append(header)
+
+    return extra_dims[:6], extra_metrics[:6]
+
+
+def validate_processed_dataset(
+    rows: list[dict[str, Any]],
+    mapping: dict[str, str],
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Validate pre-processed rows flexibly without requiring fixed column names."""
     unspecified = load_constants()["filters"]["unspecified"]
-    text_cols = {mapping["zone"], mapping["period"], mapping["violence"], mapping["service"]}
-    if mapping["cases"] in text_cols or mapping["capacity"] in text_cols:
-        raise ValueError("El mapeo no es coherente: casos y capacidad deben corresponder a columnas numéricas.")
+    text_cols = {
+        mapping[key]
+        for key in ("zone", "period", "violence", "service")
+        if mapping.get(key)
+    }
+    if mapping.get("cases") and mapping["cases"] in text_cols:
+        raise ValueError("El mapeo no es coherente: la columna de casos debe ser numérica o quedar en 1 registro = 1 caso.")
+    if mapping.get("capacity") and mapping["capacity"] in text_cols:
+        raise ValueError("El mapeo no es coherente: la columna de atenciones/capacidad debe ser numérica o quedar sin asignar.")
+
+    extra_dims, extra_metrics = detect_extra_schema(rows, mapping)
+    has_cases_col = bool(mapping.get("cases"))
+    has_capacity_col = bool(mapping.get("capacity"))
 
     processed = len(rows)
     removed = 0
@@ -176,24 +264,44 @@ def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str])
             continue
         seen_rows.add(fingerprint)
 
-        zone_raw = str(raw.get(mapping["zone"]) or "").strip()
-        period_raw = str(raw.get(mapping["period"]) or "").strip()
-        if not zone_raw and not period_raw:
+        zone_col = mapping.get("zone") or ""
+        period_col = mapping.get("period") or ""
+        zone_raw = str(raw.get(zone_col) or "").strip() if zone_col else ""
+        period_raw = str(raw.get(period_col) or "").strip() if period_col else ""
+        if (zone_col or period_col) and not zone_raw and not period_raw and not extra_dims:
             removed += 1
             continue
 
-        cases_val, cases_status = parse_numeric_cell(raw.get(mapping["cases"]))
-        capacity_val, capacity_status = parse_numeric_cell(raw.get(mapping["capacity"]))
-        if cases_status == "invalid" or capacity_status == "invalid":
-            removed += 1
-            continue
+        if has_cases_col:
+            cases_val, cases_status = parse_numeric_cell(raw.get(mapping["cases"]))
+            if cases_status == "invalid":
+                removed += 1
+                continue
+        else:
+            cases_val, cases_status = 1.0, "value"
 
-        for status in (cases_status, capacity_status):
-            if status == "zero":
+        if has_capacity_col:
+            capacity_val, capacity_status = parse_numeric_cell(raw.get(mapping["capacity"]))
+            if capacity_status == "invalid":
+                removed += 1
+                continue
+        else:
+            capacity_val, capacity_status = None, "na"
+
+        if has_cases_col:
+            if cases_status == "zero":
                 zero_values += 1
-            elif status == "na":
+            elif cases_status == "na":
                 na_values += 1
-            elif status == "missing":
+            elif cases_status == "missing":
+                missing_values += 1
+
+        if has_capacity_col:
+            if capacity_status == "zero":
+                zero_values += 1
+            elif capacity_status == "na":
+                na_values += 1
+            elif capacity_status == "missing":
                 missing_values += 1
 
         person_col = mapping.get("person") or ""
@@ -220,11 +328,33 @@ def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str])
         status_col = mapping.get("periodStatus") or ""
         period_status = raw.get(status_col, "") if status_col else ""
 
-        zone = canonical_zone(zone_raw)
+        zone = canonical_zone(zone_raw) if zone_col else unspecified
         period = period_raw or unspecified
-        violence = normalize(raw.get(mapping["violence"])) or unspecified
-        service = normalize(raw.get(mapping["service"])) or unspecified
+        violence_col = mapping.get("violence") or ""
+        service_col = mapping.get("service") or ""
+        violence = normalize(raw.get(violence_col)) or unspecified if violence_col else unspecified
+        service = normalize(raw.get(service_col)) or unspecified if service_col else unspecified
         complete = not is_period_incomplete(period, period_status)
+
+        row_extra_dims: dict[str, str] = {}
+        for col in extra_dims:
+            val_text = str(raw.get(col) or "").strip()
+            norm_val = normalize(val_text)
+            if norm_val in _MISSING_TOKENS:
+                row_extra_dims[col] = unspecified
+            elif norm_val in _NA_TOKENS:
+                row_extra_dims[col] = "N/A"
+            else:
+                row_extra_dims[col] = val_text
+
+        row_extra_metrics: dict[str, float | None] = {}
+        row_extra_statuses: dict[str, str] = {}
+        for col in extra_metrics:
+            val_num, val_status = parse_numeric_cell(raw.get(col))
+            if val_status == "invalid":
+                val_num, val_status = None, "missing"
+            row_extra_metrics[col] = val_num
+            row_extra_statuses[col] = val_status
 
         cleaned.append(
             {
@@ -240,6 +370,9 @@ def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str])
                 "cases_status": cases_status,
                 "capacity_status": capacity_status,
                 "person_id": person_id,
+                "extra_dims": row_extra_dims,
+                "extra_metrics": row_extra_metrics,
+                "extra_metric_statuses": row_extra_statuses,
             }
         )
 
@@ -255,6 +388,24 @@ def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str])
         "hasResidenceDistinction": has_residence,
         "hasEventDateDistinction": has_event_date,
     }
+    metadata = {
+        "hasCapacityData": has_capacity_col,
+        "columnLabels": {
+            "zone": mapping.get("zone") or "Municipio / zona",
+            "period": mapping.get("period") or "Periodo de corte",
+            "violence": mapping.get("violence") or "Tipo de violencia",
+            "service": mapping.get("service") or "Tipo de servicio",
+            "cases": mapping.get("cases") or "Casos registrados",
+            "capacity": mapping.get("capacity") or "Servicios / atenciones",
+        },
+        "extraDimensions": extra_dims,
+        "extraMetrics": extra_metrics,
+    }
+    return cleaned, audit, metadata
+
+
+def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    cleaned, audit, _metadata = validate_processed_dataset(rows, mapping)
     return cleaned, audit
 
 

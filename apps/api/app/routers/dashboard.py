@@ -16,11 +16,15 @@ def dashboard(
     service: str = Query(default="", max_length=120),
 ) -> dict:
     labels = load_constants()["filters"]
-    records, source = load_active()
+    records, source, metadata = load_active()
+    available_periods = {row["period"] for row in records}
+    resolved_period = period or (
+        labels["defaultPeriod"] if labels["defaultPeriod"] in available_periods else labels["allPeriods"]
+    )
     filters = {
-        "period": period or labels["defaultPeriod"],
+        "period": resolved_period,
         "municipality": municipality or labels["allZones"],
         "violence": violence or labels["allViolence"],
         "service": service or labels["allServices"],
     }
-    return build_dashboard(records, filters, source)
+    return build_dashboard(records, filters, source, metadata)

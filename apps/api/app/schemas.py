@@ -83,6 +83,44 @@ class Forecast(BaseModel):
     proposals: list[str]
 
 
+class DimensionLabels(BaseModel):
+    zone: str
+    period: str
+    violence: str
+    service: str
+    cases: str
+    capacity: str
+
+
+class DynamicBreakdownItem(BaseModel):
+    name: str
+    cases: float
+    records: int
+    sharePct: float
+
+
+class DynamicBreakdown(BaseModel):
+    key: str
+    label: str
+    kind: Literal["category", "status", "temporal"]
+    filterField: Literal["violence", "service", "period", "zone"] | None
+    totalCategories: int
+    items: list[DynamicBreakdownItem]
+
+
+class DynamicMetric(BaseModel):
+    key: str
+    label: str
+    sum: float
+    avg: float | None
+    min: float | None
+    max: float | None
+    validCount: int
+    zeroCount: int
+    naCount: int
+    missingCount: int
+
+
 class Audit(BaseModel):
     processed: int
     valid: int
@@ -114,6 +152,7 @@ class DashboardResponse(BaseModel):
     totalPeople: int
     totalRecords: int
     hasPersonIds: bool
+    hasCapacityData: bool
     hasResidenceDistinction: bool
     hasEventDateDistinction: bool
     missingCasesCount: int
@@ -121,20 +160,23 @@ class DashboardResponse(BaseModel):
     missingCapacityCount: int
     naCapacityCount: int
     priorityCount: int
+    dimensionLabels: DimensionLabels
+    dynamicBreakdowns: list[DynamicBreakdown]
+    dynamicMetrics: list[DynamicMetric]
     mobileRoute: list[MobileRouteStop]
     forecast: Forecast
     source: Source
 
 
 class SuggestedMapping(BaseModel):
-    zone: str
+    zone: str = ""
     residenceZone: str = ""
-    period: str
+    period: str = ""
     eventDate: str = ""
-    violence: str
-    service: str
-    cases: str
-    capacity: str
+    violence: str = ""
+    service: str = ""
+    cases: str = ""
+    capacity: str = ""
     person: str = ""
     periodStatus: str = ""
 
@@ -148,17 +190,19 @@ class UploadPreview(BaseModel):
     preview: list[dict[str, str]]
     rowCount: int
     suggestedMapping: SuggestedMapping
+    detectedDimensions: list[str] = []
+    detectedMetrics: list[str] = []
 
 
 class MappingBody(BaseModel):
-    zone: str = Field(min_length=1, max_length=200)
+    zone: str = Field(default="", max_length=200)
     residenceZone: str = Field(default="", max_length=200)
-    period: str = Field(min_length=1, max_length=200)
+    period: str = Field(default="", max_length=200)
     eventDate: str = Field(default="", max_length=200)
-    violence: str = Field(min_length=1, max_length=200)
-    service: str = Field(min_length=1, max_length=200)
-    cases: str = Field(min_length=1, max_length=200)
-    capacity: str = Field(min_length=1, max_length=200)
+    violence: str = Field(default="", max_length=200)
+    service: str = Field(default="", max_length=200)
+    cases: str = Field(default="", max_length=200)
+    capacity: str = Field(default="", max_length=200)
     person: str = Field(default="", max_length=200)
     periodStatus: str = Field(default="", max_length=200)
 

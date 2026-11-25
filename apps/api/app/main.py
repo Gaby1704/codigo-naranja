@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import get_settings
+from app.config import get_settings, validate_runtime_settings
 from app.db import init_db
 from app.routers import auth, dashboard, datasets
 from app.services.accounts import seed_admin
@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    settings = get_settings()
+    validate_runtime_settings(settings)
+    logger.info(
+        "Iniciando API Código Naranja (env=%s, backend=%s, origins=%d, cookie_secure=%s, samesite=%s)",
+        settings.app_env,
+        settings.db_backend,
+        len(settings.allowed_origins),
+        settings.effective_cookie_secure,
+        settings.effective_cookie_samesite,
+    )
     init_db()
     seed_admin()
     ensure_demo()
@@ -31,7 +41,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "X-Codigo-Naranja"],
     )
 
@@ -43,7 +53,7 @@ def create_app() -> FastAPI:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["Cache-Control"] = "no-store"
-        if settings.cookie_secure:
+        if settings.effective_cookie_secure:
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
         return response
 
@@ -72,3 +82,10 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    runtime = get_settings()
+    uvicorn.run("app.main:app", host=runtime.host, port=runtime.port)

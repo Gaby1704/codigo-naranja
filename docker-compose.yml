@@ -4,19 +4,28 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
-      APP_ENV: production
-      DATABASE_PATH: /data/codigo_naranja.sqlite
+      APP_ENV: ${APP_ENV:-production}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-8000}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_DIRECT_URL: ${DATABASE_DIRECT_URL:-}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/codigo_naranja.sqlite}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      TRUST_PROXY: "true"
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
     volumes:
       - api-data:/data
     expose:
-      - "8000"
+      - "${PORT:-8000}"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"8000\")}/api/health')"]
       interval: 10s
       timeout: 3s
       retries: 5

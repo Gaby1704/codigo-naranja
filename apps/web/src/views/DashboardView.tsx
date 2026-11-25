@@ -3,6 +3,7 @@ import { useState } from "react"
 import { ActionTable } from "../components/ActionTable"
 import { Charts, GeneralComparisonCard } from "../components/Charts"
 import { MapPanel } from "../components/MapPanel"
+import { SearchableSelect } from "../components/SearchableSelect"
 import { fmt } from "../lib/format"
 import { filters as labels } from "../lib/shared"
 import { useBoard } from "../state/board"
@@ -18,9 +19,24 @@ export function DashboardView() {
   const totalCapacity = data?.totalCapacity ?? 0
   const totalPeople = data?.totalPeople ?? 0
   const totalRecords = data?.totalRecords ?? 0
-  const demandExceeds = totalCases / Math.max(totalCapacity, 1) > 1
+  const hasCapacityData = data?.hasCapacityData ?? true
+  const demandExceeds = hasCapacityData && totalCases / Math.max(totalCapacity, 1) > 1
   const missingTotal = (data?.missingCasesCount ?? 0) + (data?.missingCapacityCount ?? 0)
   const naTotal = (data?.naCasesCount ?? 0) + (data?.naCapacityCount ?? 0)
+  const dimLabels = data?.dimensionLabels ?? {
+    zone: "Municipio (hecho)",
+    period: "Periodo de corte",
+    violence: "Tipo de violencia",
+    service: "Tipo de servicio",
+    cases: "Casos registrados",
+    capacity: "Atenciones / capacidad",
+  }
+
+  const periodOptions = [labels.allPeriods, ...(data?.periods ?? [])]
+  const zoneOptions = [labels.allZones, ...(data?.municipalities ?? [])]
+  const violenceOptions = [labels.allViolence, ...(data?.violenceTypes ?? [])]
+  const serviceOptions = [labels.allServices, ...(data?.serviceTypes ?? [])]
+
   const activeFiltersCount =
     (filters.period !== labels.defaultPeriod ? 1 : 0) +
     (filters.municipality !== labels.allZones ? 1 : 0) +
@@ -36,48 +52,48 @@ export function DashboardView() {
         <button type="button" className="mobile-filter-toggle" onClick={() => setFiltersOpen((open) => !open)}>
           <Filter size={15} /> Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
         </button>
-        <label className="filter-select">
-          <span>PERIODO DE CORTE</span>
-          <select value={filters.period} onChange={(event) => setFilters({ ...filters, period: event.target.value })}>
-            <option>{labels.allPeriods}</option>
-            {(data?.periods ?? []).map((period) => (
-              <option key={period}>{period}</option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-select">
-          <span>MUNICIPIO (HECHO)</span>
-          <select value={filters.municipality} onChange={(event) => setFilters({ ...filters, municipality: event.target.value })}>
-            <option>{labels.allZones}</option>
-            {(data?.municipalities ?? []).map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-select">
-          <span>TIPO DE VIOLENCIA</span>
-          <select value={filters.violence} onChange={(event) => setFilters({ ...filters, violence: event.target.value })}>
-            <option>{labels.allViolence}</option>
-            {(data?.violenceTypes ?? []).map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-select">
-          <span>TIPO DE SERVICIO</span>
-          <select value={filters.service} onChange={(event) => setFilters({ ...filters, service: event.target.value })}>
-            <option>{labels.allServices}</option>
-            {(data?.serviceTypes ?? []).map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="filter-select">
+          <span>{dimLabels.period.toUpperCase()}</span>
+          <SearchableSelect
+            ariaLabel={dimLabels.period}
+            value={filters.period}
+            options={periodOptions}
+            onChange={(value) => setFilters({ ...filters, period: value })}
+          />
+        </div>
+        <div className="filter-select">
+          <span>{dimLabels.zone.toUpperCase()}</span>
+          <SearchableSelect
+            ariaLabel={dimLabels.zone}
+            value={filters.municipality}
+            options={zoneOptions}
+            onChange={(value) => setFilters({ ...filters, municipality: value })}
+          />
+        </div>
+        <div className="filter-select">
+          <span>{dimLabels.violence.toUpperCase()}</span>
+          <SearchableSelect
+            ariaLabel={dimLabels.violence}
+            value={filters.violence}
+            options={violenceOptions}
+            onChange={(value) => setFilters({ ...filters, violence: value })}
+          />
+        </div>
+        <div className="filter-select">
+          <span>{dimLabels.service.toUpperCase()}</span>
+          <SearchableSelect
+            ariaLabel={dimLabels.service}
+            value={filters.service}
+            options={serviceOptions}
+            onChange={(value) => setFilters({ ...filters, service: value })}
+          />
+        </div>
         <button
           type="button"
           className="reset-filter"
           onClick={() =>
             setFilters({
-              period: labels.defaultPeriod,
+              period: (data?.periods ?? []).includes(labels.defaultPeriod) ? labels.defaultPeriod : labels.allPeriods,
               municipality: labels.allZones,
               violence: labels.allViolence,
               service: labels.allServices,
@@ -114,17 +130,17 @@ export function DashboardView() {
         </article>
         <article className="kpi-card">
           <div className="kpi-top">
-            <span>SERVICIOS / ATENCIONES</span>
+            <span>{dimLabels.capacity.toUpperCase()}</span>
             <span className="kpi-icon violet">
               <HeartHandshake size={15} />
             </span>
           </div>
           <div className="kpi-value">
-            {fmt(totalCapacity)}
-            <span className="kpi-unit">atenciones</span>
+            {hasCapacityData ? fmt(totalCapacity) : "N/A"}
+            <span className="kpi-unit">{hasCapacityData ? "atenciones" : "sin columna"}</span>
           </div>
           <div className="kpi-foot">
-            <span>{naTotal > 0 ? `${naTotal} N/A excluidos` : "Capacidad registrada"}</span>
+            <span>{naTotal > 0 ? `${naTotal} N/A excluidos` : hasCapacityData ? "Capacidad registrada" : "Métrica no incluida"}</span>
             <span>{missingTotal > 0 ? `${missingTotal} faltantes` : "en selección"}</span>
           </div>
         </article>
@@ -136,12 +152,16 @@ export function DashboardView() {
             </span>
           </div>
           <div className="kpi-value">
-            {totalCapacity > 0 ? `${Math.round((totalCases / totalCapacity) * 100)}%` : totalCases > 0 ? "Sin cap." : "0%"}
-            <span className="kpi-unit">demanda / capacidad</span>
+            {!hasCapacityData ? "N/A" : totalCapacity > 0 ? `${Math.round((totalCases / totalCapacity) * 100)}%` : totalCases > 0 ? "Sin cap." : "0%"}
+            <span className="kpi-unit">{hasCapacityData ? "demanda / capacidad" : "sin cobertura"}</span>
           </div>
           <div className="kpi-foot">
             <span className={demandExceeds ? "text-priority" : "text-stable"}>
-              {totalCases > totalCapacity ? "Demanda supera capacidad" : "Capacidad sobre demanda"}
+              {!hasCapacityData
+                ? "Solo conteo de casos"
+                : totalCases > totalCapacity
+                  ? "Demanda supera capacidad"
+                  : "Capacidad sobre demanda"}
             </span>
             <span>{data?.hasResidenceDistinction ? "hecho vs. residencia" : "registros"}</span>
           </div>
@@ -154,12 +174,12 @@ export function DashboardView() {
             </span>
           </div>
           <div className="kpi-value">
-            {data?.priorityCount ?? 0}
-            <span className="kpi-unit">municipios</span>
+            {hasCapacityData ? (data?.priorityCount ?? 0) : summaries.length}
+            <span className="kpi-unit">{hasCapacityData ? "municipios" : "grupos activos"}</span>
           </div>
           <div className="kpi-foot">
             <span className="kpi-trend orange-trend">
-              <AlertTriangle size={12} /> Atención prioritaria
+              <AlertTriangle size={12} /> {hasCapacityData ? "Atención prioritaria" : "Cobertura por grupo"}
             </span>
             <span>en selección</span>
           </div>
@@ -224,12 +244,16 @@ export function DashboardView() {
             summaries={summaries}
             trends={data?.trends ?? []}
             forecast={data?.forecast}
+            dynamicBreakdowns={data?.dynamicBreakdowns ?? []}
+            dynamicMetrics={data?.dynamicMetrics ?? []}
+            hasCapacityData={hasCapacityData}
             selected={selected}
             latestPeriod={data?.periods.at(-1) ?? "—"}
             missingTotal={missingTotal}
             naTotal={naTotal}
             onSelect={setSelected}
             onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}
+            onFilterBy={(field, val) => setFilters({ ...filters, [field]: val })}
           />
         )}
 

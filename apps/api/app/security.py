@@ -1,5 +1,7 @@
 import hashlib
+import hmac
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -7,7 +9,8 @@ import bcrypt
 from app.config import get_settings
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-_DUMMY_HASH = bcrypt.hashpw(b"codigo-naranja-dummy-password", bcrypt.gensalt(rounds=12))
+_BCRYPT_HASH = re.compile(r"^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$")
+_DUMMY_HASH = bcrypt.hashpw(secrets.token_bytes(32), bcrypt.gensalt(rounds=12))
 MIN_PASSWORD = 12
 MAX_PASSWORD_BYTES = 72
 
@@ -31,12 +34,34 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def valid_bcrypt_hash(value: str) -> bool:
+    return bool(value) and _BCRYPT_HASH.fullmatch(value.strip()) is not None
+
+
 def dummy_verify(password: str) -> None:
     verify_password(password, _DUMMY_HASH.decode("utf-8"))
 
 
 def token_digest(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    secret = get_settings().effective_session_secret.encode("utf-8")
+    return hmac.new(secret, token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def sign_session_token(raw_token: str) -> str:
+    signature = token_digest(raw_token)
+    return f"{raw_token}.{signature}"
+
+
+def extract_verified_token(cookie_value: str | None) -> str | None:
+    if not cookie_value or "." not in cookie_value:
+        return None
+    raw_token, provided_sig = cookie_value.rsplit(".", 1)
+    if not raw_token or not provided_sig:
+        return None
+    expected_sig = token_digest(raw_token)
+    if not hmac.compare_digest(provided_sig, expected_sig):
+        return None
+    return raw_token
 
 
 def session_expiry() -> datetime:

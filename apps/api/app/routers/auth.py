@@ -16,8 +16,9 @@ def _cookie(response: Response, token: str) -> None:
         key=COOKIE,
         value=token,
         httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
+        secure=settings.effective_cookie_secure,
+        samesite=settings.effective_cookie_samesite,
+        domain=settings.effective_cookie_domain,
         max_age=max(1, min(settings.session_hours, 24 * 30)) * 3600,
         path="/",
     )
@@ -40,9 +41,17 @@ def login(body: LoginBody, request: Request, response: Response, _: None = Depen
 
 @router.post("/logout", status_code=204)
 def logout(request: Request, _: None = Depends(require_csrf)) -> Response:
+    settings = get_settings()
     delete_session(request.cookies.get(COOKIE))
     response = Response(status_code=204)
-    response.delete_cookie(COOKIE, path="/", samesite="lax", secure=get_settings().cookie_secure, httponly=True)
+    response.delete_cookie(
+        COOKIE,
+        path="/",
+        domain=settings.effective_cookie_domain,
+        samesite=settings.effective_cookie_samesite,
+        secure=settings.effective_cookie_secure,
+        httponly=True,
+    )
     return response
 
 

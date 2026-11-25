@@ -10,7 +10,7 @@ from app.schemas import ApplyBody, SheetBody, UploadPreview
 from app.services.accounts import CurrentUser
 from app.services.catalog import replace_active
 from app.services.excel import WorkbookError, build_template, parse_workbook
-from app.services.rules import suggest_mapping, validate_processed_rows
+from app.services.rules import detect_extra_schema, suggest_mapping, validate_processed_dataset
 from app.services.uploads import drop_upload, get_upload, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -38,7 +38,9 @@ def _filename(upload: UploadFile) -> str:
 def _preview(upload_id: str, name: str, sheets: dict[str, list[dict[str, str]]], sheet: str) -> dict:
     rows = sheets[sheet]
     headers = list(rows[0].keys()) if rows else []
-    visible = headers[:6]
+    visible = headers[:8]
+    suggested = suggest_mapping(headers, rows)
+    extra_dims, extra_metrics = detect_extra_schema(rows, suggested)
     return {
         "uploadId": upload_id,
         "name": name,
@@ -47,7 +49,9 @@ def _preview(upload_id: str, name: str, sheets: dict[str, list[dict[str, str]]],
         "headers": headers,
         "preview": [{header: row.get(header, "") for header in visible} for row in rows[:3]],
         "rowCount": len(rows),
-        "suggestedMapping": suggest_mapping(headers),
+        "suggestedMapping": suggested,
+        "detectedDimensions": extra_dims,
+        "detectedMetrics": extra_metrics,
     }
 
 
@@ -112,11 +116,11 @@ def apply_upload(
     if any(column and column not in headers for column in mapping.values()):
         raise HTTPException(status_code=400, detail="La asignación incluye una columna que no existe en la hoja.")
     try:
-        cleaned, audit = validate_processed_rows(rows, mapping)
+        cleaned, audit, metadata = validate_processed_dataset(rows, mapping)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cleaned:
         raise HTTPException(status_code=400, detail="No se encontraron registros válidos coherentes con el esquema esperado.")
-    replace_active(pending.name, cleaned, audit)
+    replace_active(pending.name, cleaned, audit, metadata)
     drop_upload(upload_id)
     return {"audit": audit, "fileName": pending.name}

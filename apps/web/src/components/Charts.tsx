@@ -1,5 +1,12 @@
-import { ArrowUpRight, TrendingUp } from "lucide-react"
-import type { ClassificationColor, Forecast, Summary, Trend } from "../../../../packages/shared/types"
+import { ArrowUpRight, Layers, TrendingUp } from "lucide-react"
+import type {
+  ClassificationColor,
+  DynamicBreakdown,
+  DynamicMetric,
+  Forecast,
+  Summary,
+  Trend,
+} from "../../../../packages/shared/types"
 import { fmt, gap } from "../lib/format"
 
 const TIER_ORDER: Array<{ color: ClassificationColor; title: string; hint: string }> = [
@@ -29,7 +36,9 @@ export function GeneralComparisonCard({
     ? "Sin registros en la selección actual"
     : topZone.ratio >= 1.3
       ? `${topZone.name} encabeza la brecha (${gap(topZone.ratio)})`
-      : `La capacidad supera la demanda en ${topZone.name}`
+      : topZone.capacity > 0
+        ? `La capacidad supera la demanda en ${topZone.name}`
+        : `${topZone.name} concentra ${fmt(topZone.cases)} casos`
 
   return (
     <section className="panel chart-panel">
@@ -86,22 +95,30 @@ export function Charts({
   summaries,
   trends,
   forecast,
+  dynamicBreakdowns,
+  dynamicMetrics,
+  hasCapacityData,
   selected,
   latestPeriod,
   missingTotal,
   naTotal,
   onSelect,
   onShowAll,
+  onFilterBy,
 }: {
   summaries: Summary[]
   trends: Trend[]
   forecast?: Forecast
+  dynamicBreakdowns: DynamicBreakdown[]
+  dynamicMetrics: DynamicMetric[]
+  hasCapacityData: boolean
   selected: string
   latestPeriod: string
   missingTotal: number
   naTotal: number
   onSelect: (name: string) => void
   onShowAll: () => void
+  onFilterBy?: (field: "violence" | "service" | "period", value: string) => void
 }) {
   const forecastPoints = forecast?.available ? forecast.points : []
   const trendValues = [
@@ -218,6 +235,101 @@ export function Charts({
         </p>
       </section>
 
+      {dynamicBreakdowns.map((breakdown, bdIdx) => {
+        const top = breakdown.items[0]
+        const maxCatCases = Math.max(...breakdown.items.map((item) => item.cases), 1)
+        const barColorClass =
+          breakdown.kind === "temporal"
+            ? "dyn-temporal"
+            : breakdown.kind === "status"
+              ? "dyn-status"
+              : bdIdx % 2 === 0
+                ? "dyn-cat-a"
+                : "dyn-cat-b"
+        const canFilter =
+          breakdown.filterField === "violence" ||
+          breakdown.filterField === "service" ||
+          breakdown.filterField === "period"
+        return (
+          <section className="panel chart-panel dynamic-chart-panel" key={breakdown.key}>
+            <div className="panel-heading compact">
+              <div>
+                <span className="eyebrow">
+                  DESGLOSE DINÁMICO <span className="eyebrow-slash">/</span> {breakdown.label.toUpperCase()}
+                </span>
+                <h2>
+                  {top
+                    ? `${top.name} concentra el ${top.sharePct}% en ${breakdown.label}`
+                    : `Sin registros en ${breakdown.label}`}
+                </h2>
+                <p>
+                  {breakdown.totalCategories} categorías detectadas · escala desde 0
+                </p>
+              </div>
+              <span className="axis-tag">
+                <Layers size={11} /> {breakdown.items.length}
+              </span>
+            </div>
+            <div className="bar-chart">
+              {breakdown.items.map((item) => {
+                const width = item.cases === 0 ? 0 : Math.max(3, (item.cases / maxCatCases) * 100)
+                return (
+                  <button
+                    type="button"
+                    className="bar-row"
+                    key={item.name}
+                    onClick={() => {
+                      if (canFilter && onFilterBy && breakdown.filterField) {
+                        onFilterBy(breakdown.filterField as "violence" | "service" | "period", item.name)
+                      }
+                    }}
+                    title={`${item.name}: ${fmt(item.cases)} casos (${item.sharePct}%) · ${fmt(item.records)} registros`}
+                  >
+                    <span className="bar-name">{item.name}</span>
+                    <span className="bar-track single">
+                      <i className={barColorClass} style={{ width: `${width}%` }} />
+                    </span>
+                    <span className="bar-number">
+                      {fmt(item.cases)} ({item.sharePct}%)
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })}
+
+      {dynamicMetrics.length > 0 && (
+        <section className="panel tier-panel">
+          <div className="panel-heading compact">
+            <div>
+              <span className="eyebrow">
+                MÉTRICAS ADICIONALES DEL ARCHIVO <span className="eyebrow-slash">/</span> RESUMEN
+              </span>
+              <h2>Indicadores numéricos detectados en las columnas del libro</h2>
+              <p>Los promedios conservan el 0 y excluyen N/A o valores faltantes</p>
+            </div>
+            <span className="axis-tag">{dynamicMetrics.length} métricas</span>
+          </div>
+          <div className="dynamic-metrics-grid">
+            {dynamicMetrics.map((metric) => (
+              <div className="dynamic-metric-card" key={metric.key}>
+                <span>{metric.label}</span>
+                <strong>{metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin datos válidos"}</strong>
+                <small>
+                  Suma: {fmt(metric.sum)} · Rango: {metric.min !== null ? fmt(metric.min) : "—"} a{" "}
+                  {metric.max !== null ? fmt(metric.max) : "—"}
+                </small>
+                <small>
+                  Ceros: {metric.zeroCount} · N/A: {metric.naCount} · Faltantes: {metric.missingCount}
+                </small>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="panel tier-panel">
         <div className="panel-heading compact">
           <div>
@@ -225,9 +337,11 @@ export function Charts({
               COBERTURA TERRITORIAL Y CALIDAD <span className="eyebrow-slash">/</span> 04
             </span>
             <h2>
-              {tierStats[0].count > 0
-                ? `${tierStats[0].count} municipios requieren atención prioritaria`
-                : "Sin municipios en saturación crítica en la selección"}
+              {!hasCapacityData
+                ? `${summaries.length} grupos territoriales en el archivo activo`
+                : tierStats[0].count > 0
+                  ? `${tierStats[0].count} municipios requieren atención prioritaria`
+                  : "Sin municipios en saturación crítica en la selección"}
             </h2>
             <p>Distribución de municipios por clasificación operativa y volumen acumulado</p>
           </div>

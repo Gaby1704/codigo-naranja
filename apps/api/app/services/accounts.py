@@ -7,13 +7,16 @@ from app.config import get_settings
 from app.db import db
 from app.security import (
     dummy_verify,
+    extract_verified_token,
     hash_password,
     iso,
     normalize_email,
     password_problem,
     session_expiry,
+    sign_session_token,
     token_digest,
     utcnow,
+    valid_bcrypt_hash,
     valid_email,
     verify_password,
 )
@@ -36,12 +39,27 @@ def seed_admin() -> None:
     settings = get_settings()
     email = normalize_email(settings.admin_email)
     password = settings.admin_password
-    if not email and not password:
-        logger.info("Sin ADMIN_EMAIL y ADMIN_PASSWORD: no se creó cuenta administradora.")
+    password_hash_env = settings.admin_password_hash.strip()
+
+    if not email and not password and not password_hash_env:
+        logger.info("Sin credenciales de administrador configuradas; la carga de datos queda deshabilitada.")
         return
-    if not valid_email(email) or password_problem(password):
-        logger.error("ADMIN_EMAIL o ADMIN_PASSWORD no cumplen la política. No se creó la cuenta.")
+    if not valid_email(email):
+        logger.error("ADMIN_EMAIL no tiene un formato válido. No se creó la cuenta administradora.")
         return
+
+    resolved_hash = ""
+    if password_hash_env:
+        if not valid_bcrypt_hash(password_hash_env):
+            logger.error("ADMIN_PASSWORD_HASH no tiene un formato bcrypt válido.")
+            return
+        resolved_hash = password_hash_env
+    else:
+        if password_problem(password):
+            logger.error("ADMIN_PASSWORD no cumple la política mínima de seguridad. No se creó la cuenta.")
+            return
+        resolved_hash = hash_password(password)
+
     with db() as conn:
         existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if existing is None:
@@ -50,11 +68,11 @@ def seed_admin() -> None:
                 INSERT INTO users (id, name, email, password_hash, role, created_at)
                 VALUES (?, 'Administrador', ?, ?, 'admin', ?)
                 """,
-                (uuid.uuid4().hex, email, hash_password(password), iso(utcnow())),
+                (uuid.uuid4().hex, email, resolved_hash, iso(utcnow())),
             )
         else:
             conn.execute("UPDATE users SET role = 'admin' WHERE email = ?", (email,))
-    logger.info("Cuenta administradora lista.")
+    logger.info("Cuenta administradora verificada.")
 
 
 def authenticate(email: str, password: str) -> tuple[str, CurrentUser | None]:
@@ -76,22 +94,23 @@ def authenticate(email: str, password: str) -> tuple[str, CurrentUser | None]:
 
 
 def create_session(user_id: str) -> str:
-    token = secrets.token_urlsafe(32)
+    raw_token = secrets.token_urlsafe(32)
     with db() as conn:
         conn.execute(
             """
             INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (uuid.uuid4().hex, user_id, token_digest(token), iso(session_expiry()), iso(utcnow())),
+            (uuid.uuid4().hex, user_id, token_digest(raw_token), iso(session_expiry()), iso(utcnow())),
         )
-    return token
+    return sign_session_token(raw_token)
 
 
-def user_from_token(token: str | None) -> CurrentUser | None:
-    if not token:
+def user_from_token(cookie_value: str | None) -> CurrentUser | None:
+    raw_token = extract_verified_token(cookie_value)
+    if not raw_token:
         return None
-    digest = token_digest(token)
+    digest = token_digest(raw_token)
     now = iso(utcnow())
     with db() as conn:
         row = conn.execute(
@@ -111,8 +130,9 @@ def user_from_token(token: str | None) -> CurrentUser | None:
     return CurrentUser(id=row["id"], name=row["name"], email=row["email"], role=row["role"])
 
 
-def delete_session(token: str | None) -> None:
-    if not token:
+def delete_session(cookie_value: str | None) -> None:
+    raw_token = extract_verified_token(cookie_value)
+    if not raw_token:
         return
     with db() as conn:
-        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_digest(token),))
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (token_digest(raw_token),))

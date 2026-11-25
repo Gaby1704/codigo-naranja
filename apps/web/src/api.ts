@@ -1,6 +1,12 @@
 import type { Audit, AuthResponse, ColumnMapping, Dashboard, UploadPreview } from "../../../packages/shared/types"
 import type { Filters } from "./lib/shared"
 
+const API_BASE = ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL ?? "").replace(/\/+$/, "")
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path}`
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -16,7 +22,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json")
   }
-  const response = await fetch(path, { ...init, headers, credentials: "include" })
+  const response = await fetch(apiUrl(path), { ...init, headers, credentials: "include" })
   if (response.status === 204) return undefined as T
   const payload = (await response.json().catch(() => ({}))) as { detail?: unknown }
   if (!response.ok) {
@@ -67,7 +73,7 @@ export function applyDataset(uploadId: string, sheet: string, mapping: ColumnMap
 }
 
 export async function downloadTemplate() {
-  const response = await fetch("/api/datasets/template", {
+  const response = await fetch(apiUrl("/api/datasets/template"), {
     credentials: "include",
     headers: { "X-Codigo-Naranja": "1" },
   })

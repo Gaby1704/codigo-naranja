@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowUpRight, Check, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react"
+import { ArrowDownToLine, ArrowUpRight, Check, FileSpreadsheet, ShieldCheck, Sparkles, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import type { Audit, ColumnMapping, UploadPreview } from "../../../../packages/shared/types"
@@ -6,18 +6,18 @@ import { applyDataset, changeSheet, downloadTemplate, uploadDataset } from "../a
 import { allFilters } from "../lib/shared"
 import { useBoard } from "../state/board"
 
-const REQUIRED_FIELDS: Array<[keyof ColumnMapping, string]> = [
-  ["zone", "Municipio del hecho (ocurrencia)"],
-  ["period", "Periodo de registro / corte"],
-  ["violence", "Tipo de violencia"],
-  ["service", "Tipo de servicio"],
-  ["cases", "Casos registrados"],
-  ["capacity", "Servicios / atenciones registradas"],
+const CORE_FIELDS: Array<[keyof ColumnMapping, string, string]> = [
+  ["zone", "Dimensión territorial / grupo principal", "Sin columna territorial (agrupación general)"],
+  ["period", "Periodo / fecha / corte", "Sin columna de periodo"],
+  ["violence", "Categoría principal (ej. tipo de violencia / modalidad)", "Sin columna de categoría"],
+  ["service", "Subcategoría o servicio (ej. atención / canalización)", "Sin columna de servicio"],
+  ["cases", "Métrica principal de casos / conteo", "1 fila = 1 caso registrado"],
+  ["capacity", "Métrica de atenciones / capacidad", "Sin columna de capacidad"],
 ]
 
 const OPTIONAL_FIELDS: Array<[keyof ColumnMapping, string, string]> = [
   ["person", "Expediente / ID persona única", "Sin columna de expediente"],
-  ["residenceZone", "Municipio de residencia / pertenencia", "Igual al municipio del hecho / no incluido"],
+  ["residenceZone", "Municipio de residencia / pertenencia", "No incluido"],
   ["eventDate", "Fecha o periodo del hecho", "No incluido"],
   ["periodStatus", "Estado del periodo (completo / parcial)", "Todos los periodos completos"],
 ]
@@ -95,8 +95,7 @@ export function AdminView() {
           </span>
           <h2>Carga de archivos procesados</h2>
           <p>
-            La depuración pesada se realiza en el limpiador externo. Este módulo valida columnas, esquema y coherencia de registros
-            distinguiendo expediente único, casos, servicios, ceros, N/A y faltantes.
+            La depuración pesada se realiza fuera del tablero. Puedes cargar cualquier libro Excel ya procesado sin depender de nombres fijos de columnas: las gráficas, filtros y series se adaptan a las dimensiones y métricas detectadas.
           </p>
         </div>
         <button
@@ -128,7 +127,7 @@ export function AdminView() {
           <Upload size={23} />
         </span>
         <h3>Arrastra tu archivo Excel ya procesado aquí</h3>
-        <p>Esquema validado de casos y servicios · Formato .xlsx o .xls</p>
+        <p>Detección flexible de columnas categóricas, temporales y métricas · Formato .xlsx o .xls</p>
         <button type="button" className="button primary" onClick={() => inputRef.current?.click()} disabled={busy}>
           <FileSpreadsheet size={16} /> Seleccionar archivo
         </button>
@@ -154,7 +153,7 @@ export function AdminView() {
                 VALIDACIÓN COMPLETADA <span className="eyebrow-slash">/</span> AUDITORÍA
               </span>
               <h3>Archivo aplicado: {appliedResult.fileName}</h3>
-              <p>Resumen de coherencia, conteo de expedientes únicos y tratamiento de ceros, N/A y faltantes.</p>
+              <p>Base de datos actualizada y gráficas recalculadas según la estructura del archivo.</p>
             </div>
             <button type="button" className="button primary" onClick={() => navigate("/")}>
               Ir al tablero <ArrowUpRight size={15} />
@@ -193,15 +192,15 @@ export function AdminView() {
           <div className="admin-card-title">
             <div>
               <span className="eyebrow">
-                VALIDACIÓN DE ESQUEMA <span className="eyebrow-slash">/</span> 01
+                ESQUEMA FLEXIBLE <span className="eyebrow-slash">/</span> 01
               </span>
               <h3>Verifica la asignación de columnas</h3>
               <p>
-                Libro: <strong>{preview.name}</strong> · {preview.rowCount} filas detectadas
+                Libro: <strong>{preview.name}</strong> · {preview.rowCount} filas detectadas · {preview.headers.length} columnas
               </p>
             </div>
             <span className="file-badge">
-              <FileSpreadsheet size={15} /> XLSX
+              <FileSpreadsheet size={15} /> {preview.sheet}
             </span>
           </div>
           <label className="field-label">
@@ -213,10 +212,11 @@ export function AdminView() {
             </select>
           </label>
           <div className="mapping-grid">
-            {REQUIRED_FIELDS.map(([key, label]) => (
+            {CORE_FIELDS.map(([key, label, emptyLabel]) => (
               <label className="field-label" key={key}>
                 {label}
                 <select value={mapping[key]} onChange={(event) => setMapping({ ...mapping, [key]: event.target.value })}>
+                  <option value="">{emptyLabel}</option>
                   {preview.headers.map((header) => (
                     <option key={header} value={header}>
                       {header}
@@ -239,11 +239,23 @@ export function AdminView() {
               </label>
             ))}
           </div>
+          {(preview.detectedDimensions.length > 0 || preview.detectedMetrics.length > 0) && (
+            <div className="detected-schema-box">
+              <Sparkles size={15} />
+              <div>
+                <strong>Columnas adicionales detectadas para gráficas dinámicas:</strong>
+                <p>
+                  {preview.detectedDimensions.length > 0 && `Dimensiones: ${preview.detectedDimensions.join(", ")}. `}
+                  {preview.detectedMetrics.length > 0 && `Métricas: ${preview.detectedMetrics.join(", ")}.`}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="preview-table">
             <table>
               <thead>
                 <tr>
-                  {preview.headers.slice(0, 6).map((header) => (
+                  {preview.headers.slice(0, 8).map((header) => (
                     <th key={header}>{header}</th>
                   ))}
                 </tr>
@@ -251,7 +263,7 @@ export function AdminView() {
               <tbody>
                 {preview.preview.map((row, index) => (
                   <tr key={index}>
-                    {preview.headers.slice(0, 6).map((header) => (
+                    {preview.headers.slice(0, 8).map((header) => (
                       <td key={header}>{row[header] ?? ""}</td>
                     ))}
                   </tr>
@@ -261,10 +273,10 @@ export function AdminView() {
           </div>
           <div className="admin-actions">
             <span>
-              <ShieldCheck size={15} /> Validación de esquema y coherencia · Un expediente puede tener múltiples casos/seguimientos sin duplicar persona
+              <ShieldCheck size={15} /> Adaptación dinámica a la estructura del libro · Un expediente puede tener múltiples registros sin duplicar persona
             </span>
             <button type="button" className="button primary" onClick={() => void apply()} disabled={busy}>
-              <Check size={16} /> Validar y aplicar al tablero
+              <Check size={16} /> Cargar a base de datos
             </button>
           </div>
         </div>
