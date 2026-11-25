@@ -6,7 +6,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from app.config import get_settings
-
+#comedia
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
