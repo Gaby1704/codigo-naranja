@@ -1,7 +1,7 @@
 import { Activity, CalendarDays, ChevronDown, CircleHelp, LockKeyhole, LogIn, LogOut, ShieldCheck, SlidersHorizontal, X } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { NavLink, Navigate, Outlet, useNavigate } from "react-router-dom"
-import { login, logout } from "../api"
+import { getMe, login, logout } from "../api"
 import { useAuth } from "../state/auth"
 import { useBoard } from "../state/board"
 
@@ -130,10 +130,17 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
     setBusy(true)
     try {
       const result = await login(email.trim(), password)
-      setUser(result.user)
+      const verified = await getMe()
+      if (!verified.user) {
+        setError(
+          "El navegador no conservó la cookie de sesión (HttpOnly). Verifica COOKIE_SECURE=false en HTTP local o COOKIE_SAMESITE=none con COOKIE_SECURE=true si frontend y backend usan dominios HTTPS distintos.",
+        )
+        return
+      }
+      setUser(verified.user ?? result.user)
       setPassword("")
       onClose()
-      if (result.user?.role === "admin") navigate("/admin")
+      if ((verified.user ?? result.user)?.role === "admin") navigate("/admin")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No fue posible conectar con el servicio de acceso.")
     } finally {

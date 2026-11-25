@@ -26,6 +26,9 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) return undefined as T
   const payload = (await response.json().catch(() => ({}))) as { detail?: unknown }
   if (!response.ok) {
+    if (response.status === 401 && path !== "/api/auth/login") {
+      window.dispatchEvent(new CustomEvent("cn:unauthorized"))
+    }
     const detail = typeof payload.detail === "string" ? payload.detail : "No se pudo completar la solicitud."
     throw new ApiError(response.status, detail)
   }
@@ -78,6 +81,9 @@ export async function downloadTemplate() {
     headers: { "X-Codigo-Naranja": "1" },
   })
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent("cn:unauthorized"))
+    }
     const payload = (await response.json().catch(() => ({}))) as { detail?: unknown }
     const detail = typeof payload.detail === "string" ? payload.detail : "No se pudo descargar la plantilla."
     throw new ApiError(response.status, detail)

@@ -209,10 +209,10 @@ Si no hay dataset activo, la API inserta 20 municipios × 3 años (2024, 2025 y 
 
 ## Autenticación
 
-- No hay registro público. La única cuenta nace de `ADMIN_EMAIL` y `ADMIN_PASSWORD` al arrancar.
+- No hay registro público. La cuenta administradora nace de `ADMIN_EMAIL` junto con `ADMIN_PASSWORD` o `ADMIN_PASSWORD_HASH` al arrancar.
 - Si el correo ya existe, el arranque solo asegura el rol `admin`. No reescribe la contraseña.
-- La contraseña se guarda con bcrypt (factor 12).
-- El navegador recibe un token aleatorio en la cookie `cn_session` (`HttpOnly`, `SameSite=Lax`, 7 días). En la base solo se guarda su SHA-256.
+- Algoritmo de contraseña: **bcrypt** (`bcrypt.hashpw` y `bcrypt.checkpw` sobre UTF-8), con `bcrypt.gensalt(rounds=12)` (mínimo 12 caracteres, máximo 72 bytes; formatos `$2a$`, `$2b$` o `$2y$`).
+- El navegador recibe un token firmado en la cookie `cn_session` (`HttpOnly`, `SameSite` configurable, 7 días). En la base solo se guarda su resumen **HMAC-SHA256** con `SESSION_SECRET`.
 - Un correo o contraseña incorrectos responden igual: no se dice cuál falló. Hay un tope de 8 intentos por IP cada 10 minutos.
 - Una cuenta que no es `admin` no recibe sesión.
 
