@@ -231,4 +231,4 @@ Si no hay dataset activo, la API inserta 20 municipios × 3 años (2024, 2025 y 
 - No estima población ni incidencia real. Una zona con pocos registros puede ser subregistro.
 - El mapa marca 20 municipios del catálogo. Otros nombres válidos se ven en la tabla.
 - La posición de los puntos es esquemática, no es una coordenada geográfica oficial.
-- Una sola réplica de la API guarda las cargas pendientes en memoria. Varios workers no comparten esa vista previa; el dataset ya aplicado sí está en SQLite.
+- Una sola réplica de la API guarda las cargas pendientes en memoria. Varios workers no comparten esa vista previa; el dataset ya aplicado sí está en SQLite
