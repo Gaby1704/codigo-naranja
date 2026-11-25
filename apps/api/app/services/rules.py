@@ -241,6 +241,8 @@ def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> 
             continue
 
         distinct = {normalize(val) for val in non_empty if normalize(val) not in _NA_TOKENS}
+        if not distinct or distinct <= {"FALSE", "FALSO"}:
+            continue
         if 1 <= len(distinct) <= 35 and (len(non_empty) <= 12 or len(distinct) / len(non_empty) <= 0.65):
             dim_candidates.append((-len(non_empty), index, header))
 

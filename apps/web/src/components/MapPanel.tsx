@@ -394,8 +394,12 @@ function MapHoverCard({
               {lastDelta !== null && (
                 <span className={`mhc-delta ${lastDelta > 0 ? "up" : lastDelta < 0 ? "down" : "flat"}`}>
                   {lastDelta > 0 ? <TrendingUp size={11} /> : lastDelta < 0 ? <TrendingDown size={11} /> : null}
-                  {lastDelta > 0 ? `+${fmt(lastDelta)}` : fmt(lastDelta)}
-                  {lastDeltaPct !== null ? ` (${lastDelta > 0 ? "+" : ""}${lastDeltaPct}%)` : ""}
+                  {lastDelta > 0
+                    ? `Subió ${fmt(lastDelta)}`
+                    : lastDelta < 0
+                      ? `Bajó ${fmt(Math.abs(lastDelta))}`
+                      : "Sin cambio"}
+                  {lastDeltaPct !== null ? ` (${fmt(Math.abs(lastDeltaPct))}%)` : ""}
                 </span>
               )}
             </div>
@@ -414,7 +418,13 @@ function MapHoverCard({
                       </div>
                       <span className="mhc-year-lbl">{yr.year}</span>
                       <span className={`mhc-year-chg ${deltaTone}`}>
-                        {yr.delta === null ? "base" : yr.delta > 0 ? `+${fmt(yr.delta)}` : fmt(yr.delta)}
+                        {yr.delta === null
+                          ? "base"
+                          : yr.delta > 0
+                            ? `↑ ${fmt(yr.delta)}`
+                            : yr.delta < 0
+                              ? `↓ ${fmt(Math.abs(yr.delta))}`
+                              : "0"}
                       </span>
                     </div>
                   )

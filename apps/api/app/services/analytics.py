@@ -1,7 +1,7 @@
 import re
 
 from app.services.constants import load_constants
-from app.services.rules import classify, is_period_incomplete, natural_key, normalize
+from app.services.rules import _is_technical_helper_col, classify, is_period_incomplete, natural_key, normalize
 
 _YEAR_RE = re.compile(r"^\d{4}$")
 _ANY_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -238,11 +238,17 @@ def _build_dynamic_breakdowns(
             total_cases_sum += cases_val
         if not buckets:
             return None
-        meaningful = [name for name in buckets if name != unspecified]
+        meaningful = [name for name in buckets if name != unspecified and normalize(name) not in {"FALSE", "FALSO"}]
         if not meaningful:
             return None
-        ordered = sorted(buckets.values(), key=lambda item: (item["cases"], item["records"]), reverse=True)
-        denom = total_cases_sum if total_cases_sum > 0 else sum(item["records"] for item in ordered)
+        ordered = sorted(
+            (item for item in buckets.values() if normalize(item["name"]) not in {"FALSE", "FALSO"}),
+            key=lambda item: (item["cases"], item["records"]),
+            reverse=True,
+        )
+        if not ordered:
+            return None
+        denom = total_cases_sum if total_cases_sum > 0 else sum(item["records"] for item in buckets.values())
         items = [
             {
                 "name": item["name"],
@@ -364,6 +370,8 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 if key not in seen_metrics:
                     seen_metrics.append(key)
         extra_metrics = seen_metrics
+    extra_dimensions = [col for col in extra_dimensions if not _is_technical_helper_col(col, {})]
+    extra_metrics = [col for col in extra_metrics if not _is_technical_helper_col(col, {})]
 
     has_person_ids = any(bool(row.get("person_id")) for row in records)
     has_capacity_data = meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records)

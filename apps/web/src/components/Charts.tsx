@@ -392,7 +392,11 @@ export function Charts({
             <TrendingUp size={13} /> Variación anual estimada:{" "}
             <b>
               {forecast?.available
-                ? `${forecast.annualDeltaCases >= 0 ? "+" : ""}${forecast.annualDeltaCases} casos/año`
+                ? forecast.annualDeltaCases > 0
+                  ? `Al alza (${fmt(forecast.annualDeltaCases)} casos/año)`
+                  : forecast.annualDeltaCases < 0
+                    ? `A la baja (${fmt(Math.abs(forecast.annualDeltaCases))} casos/año)`
+                    : "Estable (0 casos/año)"
                 : "Histórico insuficiente"}
             </b>
           </span>

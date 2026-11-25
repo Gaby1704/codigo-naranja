@@ -238,3 +238,16 @@ def test_dynamic_columns_like_edad_feed_charts_generalities_and_listings() -> No
     assert board["recordRows"][0]["extraMetrics"]["EDAD"] == 16.0
     assert board["recordRows"][0]["extraMetrics"]["HIJOS"] == 0.0
     assert board["recordRows"][0]["extraDims"]["ESCOLARIDAD"] == "PREPARATORIA"
+
+    # Legacy metadata with *_OUTLIER or False-only dimensions never graphs False
+    legacy_board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "legacy.xlsx", "synthetic": False, "audit": audit},
+        {"extraDimensions": ["FOLIO_OUTLIER", "EDAD_OUTLIER", "ESCOLARIDAD"], "extraMetrics": ["EDAD"]},
+    )
+    legacy_keys = {item["key"] for item in legacy_board["dynamicBreakdowns"]}
+    assert "extra:FOLIO_OUTLIER" not in legacy_keys
+    assert "extra:EDAD_OUTLIER" not in legacy_keys
+    for bd in legacy_board["dynamicBreakdowns"]:
+        assert all(item["name"].upper() not in {"FALSE", "FALSO"} for item in bd["items"])
