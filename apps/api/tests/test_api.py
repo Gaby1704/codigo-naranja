@@ -198,6 +198,14 @@ def test_login_upload_and_dynamic_validation(client: TestClient) -> None:
     assert by_ymd["months"] == ["01", "02"]
     assert by_ymd["days"] == ["10", "15"]
 
+    records_page = client.get("/api/dashboard/records", params={"offset": 1, "limit": 2})
+    assert records_page.status_code == 200
+    assert records_page.json()["total"] == 3
+    assert len(records_page.json()["rows"]) == 2
+    csv_resp = client.get("/api/dashboard/records.csv")
+    assert csv_resp.status_code == 200
+    assert "Apizaco" in csv_resp.text and "Tlaxcala" in csv_resp.text
+
     assert client.post("/api/auth/logout", headers=HEADERS).status_code == 204
     assert client.get("/api/auth/me").json()["user"] is None
     blocked = client.post(

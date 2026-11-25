@@ -1,4 +1,4 @@
-import type { Audit, AuthResponse, ColumnMapping, Dashboard, UploadPreview } from "../../../packages/shared/types"
+import type { Audit, AuthResponse, ColumnMapping, Dashboard, RecordsPage, UploadPreview } from "../../../packages/shared/types"
 import type { Filters } from "./lib/shared"
 
 const API_BASE = ((import.meta as { env?: Record<string, string | undefined> }).env?.VITE_API_BASE_URL ?? "").replace(/\/+$/, "")
@@ -53,6 +53,21 @@ export function logout() {
 export function getDashboard(filters: Filters, signal?: AbortSignal) {
   const params = new URLSearchParams(filters)
   return api<Dashboard>(`/api/dashboard?${params.toString()}`, { signal })
+}
+
+export function getDashboardRecords(filters: Filters, q: string, offset: number, limit = 500, signal?: AbortSignal) {
+  const params = new URLSearchParams({
+    ...filters,
+    q,
+    offset: String(offset),
+    limit: String(limit),
+  })
+  return api<RecordsPage>(`/api/dashboard/records?${params.toString()}`, { signal })
+}
+
+export function getRecordsCsvUrl(filters: Filters, q: string): string {
+  const params = new URLSearchParams({ ...filters, q })
+  return apiUrl(`/api/dashboard/records.csv?${params.toString()}`)
 }
 
 export function uploadDataset(file: File) {

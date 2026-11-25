@@ -39,6 +39,8 @@ class MunicipalityYearItem(BaseModel):
 
 class SummaryExtraMetric(BaseModel):
     avg: float | None = None
+    mode: float | None = None
+    modeCount: int = 0
     min: float | None = None
     max: float | None = None
     validCount: int = 0
@@ -139,6 +141,8 @@ class DynamicMetric(BaseModel):
     label: str
     sum: float
     avg: float | None
+    mode: float | None = None
+    modeCount: int = 0
     min: float | None
     max: float | None
     validCount: int
@@ -179,6 +183,13 @@ class RecordRow(BaseModel):
     extraDims: dict[str, str] = {}
     extraMetrics: dict[str, float | None] = {}
     extraMetricStatuses: dict[str, str] = {}
+
+
+class RecordsPageResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    rows: list[RecordRow]
 
 
 class DashboardResponse(BaseModel):

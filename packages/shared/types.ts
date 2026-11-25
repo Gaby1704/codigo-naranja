@@ -21,6 +21,8 @@ export type MunicipalityYearItem = {
 
 export type SummaryExtraMetric = {
   avg: number | null
+  mode?: number | null
+  modeCount?: number
   min: number | null
   max: number | null
   validCount: number
@@ -121,6 +123,8 @@ export type DynamicMetric = {
   label: string
   sum: number
   avg: number | null
+  mode?: number | null
+  modeCount?: number
   min: number | null
   max: number | null
   validCount: number
@@ -161,6 +165,13 @@ export type RecordRow = {
   extraDims: Record<string, string>
   extraMetrics: Record<string, number | null>
   extraMetricStatuses: Record<string, string>
+}
+
+export type RecordsPage = {
+  total: number
+  offset: number
+  limit: number
+  rows: RecordRow[]
 }
 
 export type Dashboard = {

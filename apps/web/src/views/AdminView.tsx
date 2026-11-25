@@ -168,9 +168,17 @@ export function AdminView() {
               <small>{appliedResult.audit.removed} descartados (vacíos, duplicados exactos o incoherentes)</small>
             </div>
             <div>
-              <span>EXPEDIENTES / PERSONAS ÚNICAS</span>
-              <strong>{appliedResult.audit.uniquePeople}</strong>
-              <small>{appliedResult.audit.multiCasePeople} con múltiples casos o seguimientos conservados</small>
+              <span>{appliedResult.audit.uniquePeople > 0 ? "EXPEDIENTES / PERSONAS ÚNICAS" : "CONTEO POR REGISTRO"}</span>
+              <strong>
+                {appliedResult.audit.uniquePeople > 0
+                  ? appliedResult.audit.uniquePeople
+                  : `${appliedResult.audit.valid} filas`}
+              </strong>
+              <small>
+                {appliedResult.audit.uniquePeople > 0
+                  ? `${appliedResult.audit.multiCasePeople} con múltiples casos o seguimientos conservados`
+                  : "Este archivo no cuenta con columna de expediente o ID único"}
+              </small>
             </div>
             <div>
               <span>CEROS CONSERVADOS</span>

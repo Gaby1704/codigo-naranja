@@ -122,6 +122,25 @@ def _is_mostly_numeric(header: str, rows: list[dict[str, Any]]) -> bool:
     return explicit_number >= 1 and (numeric_ok / len(non_empty)) >= 0.7
 
 
+_METRIC_FALSE_POSITIVES = (
+    "HIJO",
+    "DEPENDIENTE",
+    "EDAD",
+    "INGRESO",
+    "ESCOLARIDAD",
+    "ANIO",
+    "ANO",
+    "MES",
+    "DIA",
+    "TIEMPO",
+    "TELEFONO",
+    "CODIGO_POSTAL",
+    "POSTAL",
+    "AGRESION",
+    "VIOLENCIA",
+)
+
+
 def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None) -> dict[str, str]:
     patterns = load_constants()["columns"]["patterns"]
     normalized = [(header, normalize(header)) for header in headers]
@@ -134,6 +153,8 @@ def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None
                 if header in skip:
                     continue
                 if pattern in folded:
+                    if field in {"cases", "capacity"} and any(fp in folded for fp in _METRIC_FALSE_POSITIVES):
+                        continue
                     if require_numeric and sample_rows and not _is_mostly_numeric(header, sample_rows):
                         continue
                     return header
@@ -269,7 +290,7 @@ def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> 
 
     dim_candidates.sort()
     metric_candidates.sort()
-    return [header for _, _, header in dim_candidates[:10]], [header for _, _, header in metric_candidates[:10]]
+    return [header for _, _, header in dim_candidates[:25]], [header for _, _, header in metric_candidates[:25]]
 
 
 def validate_processed_dataset(

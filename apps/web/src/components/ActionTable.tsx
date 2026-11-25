@@ -1,8 +1,10 @@
 import { ArrowDownToLine, List, MapPin, Search } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { DimensionLabels, DynamicMetric, RecordRow, Summary } from "../../../../packages/shared/types"
+import { getDashboardRecords, getRecordsCsvUrl } from "../api"
 import { csvCell, fmt, fmtMetric, gap, humanizeColumnLabel } from "../lib/format"
 import { municipalitiesMatch } from "../lib/municipalities"
+import type { Filters } from "../lib/shared"
 
 function fmtDynamicCell(value: number | null | undefined, status: string | undefined): string {
   if (value !== null && value !== undefined) return fmt(value)
@@ -21,6 +23,7 @@ export function ActionTable({
   hasCapacityData,
   hasResidenceDistinction,
   dimensionLabels,
+  filters,
   selected,
   onSelect,
   className = "",
@@ -35,16 +38,68 @@ export function ActionTable({
   hasCapacityData: boolean
   hasResidenceDistinction: boolean
   dimensionLabels?: DimensionLabels
+  filters?: Filters
   selected: string
   onSelect: (name: string) => void
   className?: string
 }) {
   const [query, setQuery] = useState("")
   const [viewMode, setViewMode] = useState<"summary" | "records">("summary")
-  const [recordLimit, setRecordLimit] = useState(200)
+  const [showAllCols, setShowAllCols] = useState(false)
+  const [loadedRecords, setLoadedRecords] = useState<RecordRow[]>(recordRows)
+  const [remoteTotal, setRemoteTotal] = useState<number>(totalRecords || recordRows.length)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  const summaryMetrics = useMemo(() => dynamicMetrics.slice(0, 3), [dynamicMetrics])
-  const summaryDims = useMemo(() => extraDimensions.slice(0, 3), [extraDimensions])
+  useEffect(() => {
+    setLoadedRecords(recordRows)
+    setRemoteTotal(totalRecords || recordRows.length)
+  }, [recordRows, totalRecords])
+
+  useEffect(() => {
+    if (viewMode !== "records" || !filters) return
+    const trimmed = query.trim()
+    if (!trimmed && loadedRecords.length >= recordRows.length) {
+      setRemoteTotal(totalRecords || recordRows.length)
+      return
+    }
+    if (totalRecords <= recordRows.length && !trimmed) return
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      setLoadingMore(true)
+      getDashboardRecords(filters, trimmed, 0, 500, controller.signal)
+        .then((page) => {
+          setLoadedRecords(page.rows)
+          setRemoteTotal(page.total)
+        })
+        .catch(() => {})
+        .finally(() => setLoadingMore(false))
+    }, 220)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [viewMode, query, filters, totalRecords, recordRows.length])
+
+  async function loadMoreRecords() {
+    if (!filters || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const page = await getDashboardRecords(filters, query.trim(), loadedRecords.length, 500)
+      setLoadedRecords((prev) => [...prev, ...page.rows])
+      setRemoteTotal(page.total)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const summaryMetrics = useMemo(
+    () => (showAllCols ? dynamicMetrics : dynamicMetrics.slice(0, 3)),
+    [dynamicMetrics, showAllCols],
+  )
+  const summaryDims = useMemo(
+    () => (showAllCols ? extraDimensions : extraDimensions.slice(0, 3)),
+    [extraDimensions, showAllCols],
+  )
   const recordMetrics = useMemo(() => dynamicMetrics.map((m) => m.key), [dynamicMetrics])
 
   const rows = useMemo(() => {
@@ -58,22 +113,24 @@ export function ActionTable({
 
   const filteredRecordRows = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("es-MX")
-    if (!q) return recordRows
-    return recordRows.filter((row) => {
+    if (!q || (filters && totalRecords > recordRows.length)) return loadedRecords
+    return loadedRecords.filter((row) => {
       const base = [row.zone, row.period, row.violence, row.service, row.personId]
       if (base.some((val) => val.toLocaleLowerCase("es-MX").includes(q))) return true
       if (Object.values(row.extraDims).some((val) => val.toLocaleLowerCase("es-MX").includes(q))) return true
       return Object.values(row.extraMetrics).some((val) => val !== null && String(val).includes(q))
     })
-  }, [recordRows, query])
-
-  const visibleRecordRows = useMemo(
-    () => filteredRecordRows.slice(0, recordLimit),
-    [filteredRecordRows, recordLimit],
-  )
+  }, [loadedRecords, query, filters, totalRecords, recordRows.length])
 
   function exportCsv() {
     const isRecords = viewMode === "records"
+    if (isRecords && filters) {
+      const link = document.createElement("a")
+      link.href = getRecordsCsvUrl(filters, query.trim())
+      link.download = "listado-registros-smet.csv"
+      link.click()
+      return
+    }
     const headers = isRecords
       ? [
           dimensionLabels?.period ?? "Periodo",
@@ -94,7 +151,10 @@ export function ActionTable({
           ...(hasPersonIds ? ["Personas únicas"] : []),
           ...tableDimensions.map((col) => `${humanizeColumnLabel(col)} únicos`),
           "Promedio casos por registro",
-          ...summaryMetrics.map((m) => `Prom. ${humanizeColumnLabel(m.label)}`),
+          ...summaryMetrics.flatMap((m) => [
+            `Prom. ${humanizeColumnLabel(m.label)}`,
+            `Moda ${humanizeColumnLabel(m.label)}`,
+          ]),
           ...summaryDims.map((dim) => `${humanizeColumnLabel(dim)} (frecuente)`),
           ...(hasCapacityData ? ["Atenciones / capacidad", "Brecha", "Clasificación operativa", "Acción sugerida"] : []),
         ]
@@ -124,9 +184,12 @@ export function ActionTable({
             ...(hasPersonIds ? [row.uniquePeople] : []),
             ...tableDimensions.map((col) => row.tableCounts?.[col] ?? 0),
             row.avgCasesPerRecord !== null ? row.avgCasesPerRecord : "N/A",
-            ...summaryMetrics.map((m) => {
+            ...summaryMetrics.flatMap((m) => {
               const stat = row.extraMetrics?.[m.key]
-              return stat && stat.avg !== null ? stat.avg : "N/A"
+              return [
+                stat && stat.avg !== null ? stat.avg : "N/A",
+                stat && stat.mode !== null && stat.mode !== undefined ? stat.mode : "N/A",
+              ]
             }),
             ...summaryDims.map((dim) => row.extraDimensions?.[dim] ?? "Sin dato"),
             ...(hasCapacityData
@@ -158,7 +221,7 @@ export function ActionTable({
               ? "Registros filtrados con todas las columnas detectadas en el archivo."
               : hasCapacityData
                 ? "Relación entre casos registrados, capacidad institucional y métricas detectadas."
-                : "Conteos, promedios y columnas detectadas por municipio (sin datos de cobertura)."}
+                : "Conteos, promedios, modas y columnas detectadas por municipio."}
           </p>
         </div>
         <div className="table-tools">
@@ -175,9 +238,14 @@ export function ActionTable({
               className={viewMode === "records" ? "active" : ""}
               onClick={() => setViewMode("records")}
             >
-              <List size={13} /> Registros ({filteredRecordRows.length})
+              <List size={13} /> Registros ({fmt(query.trim() ? remoteTotal : totalRecords || filteredRecordRows.length)})
             </button>
           </div>
+          {viewMode === "summary" && (dynamicMetrics.length > 3 || extraDimensions.length > 3) && (
+            <button type="button" className="link-inline" onClick={() => setShowAllCols((prev) => !prev)}>
+              {showAllCols ? "Menos columnas" : "Ver todas las columnas"}
+            </button>
+          )}
           <label className="search-box">
             <Search size={14} />
             <input
@@ -207,9 +275,10 @@ export function ActionTable({
                 {hasResidenceDistinction && <th>RESIDENCIA</th>}
                 {hasCapacityData && <th>ATENCIONES</th>}
                 <th>PROM. CASOS</th>
-                {summaryMetrics.map((m) => (
-                  <th key={m.key}>PROM. {humanizeColumnLabel(m.label).toUpperCase()}</th>
-                ))}
+                {summaryMetrics.flatMap((m) => [
+                  <th key={`${m.key}-avg`}>PROM. {humanizeColumnLabel(m.label).toUpperCase()}</th>,
+                  <th key={`${m.key}-mode`}>MODA {humanizeColumnLabel(m.label).toUpperCase()}</th>,
+                ])}
                 {summaryDims.map((dim) => (
                   <th key={dim}>{humanizeColumnLabel(dim).toUpperCase()}</th>
                 ))}
@@ -241,9 +310,14 @@ export function ActionTable({
                     <td>{fmtMetric(row.capacity, row.capacityValidCount, row.capacityNaCount, row.capacityMissingCount)}</td>
                   )}
                   <td>{row.avgCasesPerRecord !== null ? fmt(row.avgCasesPerRecord) : "N/A"}</td>
-                  {summaryMetrics.map((m) => {
+                  {summaryMetrics.flatMap((m) => {
                     const stat = row.extraMetrics?.[m.key]
-                    return <td key={m.key}>{stat && stat.avg !== null ? fmt(stat.avg) : "N/A"}</td>
+                    return [
+                      <td key={`${m.key}-avg`}>{stat && stat.avg !== null ? fmt(stat.avg) : "N/A"}</td>,
+                      <td key={`${m.key}-mode`}>
+                        {stat && stat.mode !== null && stat.mode !== undefined ? fmt(stat.mode) : "N/A"}
+                      </td>,
+                    ]
                   })}
                   {summaryDims.map((dim) => (
                     <td key={dim}>{row.extraDimensions?.[dim] ?? "Sin dato"}</td>
@@ -288,7 +362,7 @@ export function ActionTable({
               </tr>
             </thead>
             <tbody>
-              {visibleRecordRows.map((row, idx) => (
+              {filteredRecordRows.map((row, idx) => (
                 <tr key={`${row.personId || "r"}-${row.period}-${row.zone}-${idx}`} onClick={() => onSelect(row.zone)}>
                   <td>{row.period}</td>
                   <td>
@@ -325,16 +399,17 @@ export function ActionTable({
             </>
           ) : (
             <>
-              Mostrando <b>{visibleRecordRows.length}</b> de <b>{totalRecords || recordRows.length}</b> registros filtrados
-              {filteredRecordRows.length > visibleRecordRows.length && (
+              Mostrando <b>{filteredRecordRows.length}</b> de <b>{fmt(remoteTotal)}</b> registros filtrados
+              {filteredRecordRows.length < remoteTotal && (
                 <>
                   {" · "}
                   <button
                     type="button"
                     className="link-inline"
-                    onClick={() => setRecordLimit((prev) => prev + 200)}
+                    disabled={loadingMore}
+                    onClick={() => void loadMoreRecords()}
                   >
-                    Mostrar más
+                    {loadingMore ? "Cargando…" : "Cargar 500 más"}
                   </button>
                 </>
               )}

@@ -289,10 +289,16 @@ export function MapPanel({
           {dynamicMetrics.slice(0, 2).map((metric) => {
             const stat = activeSummary.extraMetrics?.[metric.key]
             if (!stat || stat.avg === null) return null
+            const lbl = humanizeColumnLabel(metric.label).toUpperCase()
             return (
               <div className="detail-stat" key={metric.key}>
-                <span>PROM. {humanizeColumnLabel(metric.label).toUpperCase()}</span>
-                <b>{fmt(stat.avg)}</b>
+                <span>
+                  {lbl} (PROM.{stat.mode !== null && stat.mode !== undefined ? " / MODA" : ""})
+                </span>
+                <b>
+                  {fmt(stat.avg)}
+                  {stat.mode !== null && stat.mode !== undefined ? ` / ${fmt(stat.mode)}` : ""}
+                </b>
               </div>
             )
           })}

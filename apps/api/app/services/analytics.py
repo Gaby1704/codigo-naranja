@@ -1,3 +1,4 @@
+from collections import Counter
 import re
 
 from app.services.constants import load_constants
@@ -257,7 +258,7 @@ def _build_dynamic_breakdowns(
                 "records": item["records"],
                 "sharePct": round(((item["cases"] if total_cases_sum > 0 else item["records"]) / max(denom, 1)) * 100, 1),
             }
-            for item in ordered[:8]
+            for item in ordered
         ]
         return {
             "key": key,
@@ -282,7 +283,7 @@ def _build_dynamic_breakdowns(
         )
         if bd is not None:
             breakdowns.append(bd)
-        if len(breakdowns) >= 12:
+        if len(breakdowns) >= 25:
             return breakdowns
 
     norm_dims = {normalize(col).replace(" ", "_") for col in extra_dimensions}
@@ -293,10 +294,21 @@ def _build_dynamic_breakdowns(
         bd = _build_numeric_distribution_breakdown(filtered, col)
         if bd is not None:
             breakdowns.append(bd)
-        if len(breakdowns) >= 12:
+        if len(breakdowns) >= 25:
             break
 
     return breakdowns
+
+
+def _compute_mode(values: list[float]) -> tuple[float | None, int]:
+    """Return the most frequent numeric value (mode) and its repetition count."""
+    if not values:
+        return None, 0
+    counts = Counter(round(val, 4) for val in values)
+    top_val, top_count = min(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    if len(values) > 1 and top_count == 1:
+        return None, 0
+    return round(float(top_val), 2), int(top_count)
 
 
 def _build_dynamic_metrics(filtered: list[dict], extra_metrics: list[str]) -> list[dict]:
@@ -320,12 +332,15 @@ def _build_dynamic_metrics(filtered: list[dict], extra_metrics: list[str]) -> li
                 missing_count += 1
         if not values and na_count == 0 and missing_count == 0:
             continue
+        mode_val, mode_count = _compute_mode(values)
         metrics.append(
             {
                 "key": col,
                 "label": col,
                 "sum": round(sum(values), 2),
                 "avg": round(sum(values) / len(values), 2) if values else None,
+                "mode": mode_val,
+                "modeCount": mode_count,
                 "min": round(min(values), 2) if values else None,
                 "max": round(max(values), 2) if values else None,
                 "validCount": len(values),
@@ -337,24 +352,60 @@ def _build_dynamic_metrics(filtered: list[dict], extra_metrics: list[str]) -> li
     return metrics
 
 
-def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, metadata: dict | None = None) -> dict:
-    labels = load_constants()["filters"]
-    rules = load_constants()["classification"]
-    periods = sorted({row["period"] for row in records}, key=natural_key)
-    municipalities = sorted({row["zone"] for row in records}, key=natural_key)
-    violence_types = sorted({row["violence"] for row in records}, key=natural_key)
-    service_types = sorted({row["service"] for row in records}, key=natural_key)
+def _filter_pairs(
+    records: list[dict],
+    filters: dict[str, str],
+    labels: dict[str, str],
+) -> tuple[list[tuple[str, str, str]], list[tuple[dict, tuple[str, str, str]]]]:
+    row_parts = [_extract_date_parts(row.get("period", ""), row.get("event_date", "")) for row in records]
+    filter_year = filters.get("year") or "Todos"
+    filter_month = filters.get("month") or "Todos"
+    filter_day = filters.get("day") or "Todos"
+    if filter_month not in {"Todos", ""} and filter_month.isdigit():
+        filter_month = filter_month.zfill(2)
+    if filter_day not in {"Todos", ""} and filter_day.isdigit():
+        filter_day = filter_day.zfill(2)
 
-    meta = metadata or {}
-    default_labels = {
-        "zone": "Municipio (hecho)",
-        "period": "Periodo de corte",
-        "violence": "Tipo de violencia",
-        "service": "Tipo de servicio",
-        "cases": "Casos registrados",
-        "capacity": "Atenciones / capacidad",
+    def selected(row: dict, parts: tuple[str, str, str]) -> bool:
+        yr, mo, dy = parts
+        if filters["period"] != labels["allPeriods"]:
+            if row["period"] != filters["period"] and yr != filters["period"]:
+                return False
+        if filter_year not in {"Todos", ""} and yr != filter_year:
+            return False
+        if filter_month not in {"Todos", ""} and mo != filter_month:
+            return False
+        if filter_day not in {"Todos", ""} and dy != filter_day:
+            return False
+        if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
+            return False
+        if filters["violence"] != labels["allViolence"] and row["violence"] != filters["violence"]:
+            return False
+        if filters["service"] != labels["allServices"] and row["service"] != filters["service"]:
+            return False
+        return True
+
+    return row_parts, [(row, parts) for row, parts in zip(records, row_parts) if selected(row, parts)]
+
+
+def _serialize_record(row: dict) -> dict:
+    return {
+        "zone": row["zone"],
+        "period": row["period"],
+        "violence": row["violence"],
+        "service": row["service"],
+        "personId": row.get("person_id") or "",
+        "cases": row["cases"],
+        "casesStatus": row.get("cases_status") or ("value" if row["cases"] is not None else "missing"),
+        "capacity": row["capacity"],
+        "capacityStatus": row.get("capacity_status") or ("value" if row["capacity"] is not None else "na"),
+        "extraDims": dict(row.get("extra_dims") or {}),
+        "extraMetrics": dict(row.get("extra_metrics") or {}),
+        "extraMetricStatuses": dict(row.get("extra_metric_statuses") or {}),
     }
-    dim_labels = {**default_labels, **(meta.get("columnLabels") or {})}
+
+
+def _resolve_extra_schema(records: list[dict], meta: dict) -> tuple[list[str], list[str], list[str]]:
     extra_dimensions: list[str] = list(meta.get("extraDimensions") or [])
     extra_metrics: list[str] = list(meta.get("extraMetrics") or [])
     table_dimensions: list[str] = list(meta.get("tableDimensions") or [])
@@ -385,45 +436,84 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     extra_metrics = [
         col for col in extra_metrics if not _is_technical_helper_col(col, {}) and not _is_table_only_col(col)
     ]
+    return extra_dimensions, extra_metrics, table_dimensions
+
+
+def query_records(
+    records: list[dict],
+    filters: dict[str, str],
+    metadata: dict | None = None,
+    q: str = "",
+    offset: int = 0,
+    limit: int | None = 500,
+) -> dict:
+    labels = load_constants()["filters"]
+    _parts, pairs = _filter_pairs(records, filters, labels)
+    filtered = [row for row, _ in pairs]
+    needle = normalize(q)
+    if needle:
+        matched: list[dict] = []
+        for row in filtered:
+            haystack = [
+                row["zone"],
+                row["period"],
+                row["violence"],
+                row["service"],
+                row.get("person_id") or "",
+                *(str(v) for v in (row.get("extra_dims") or {}).values()),
+                *(str(v) for v in (row.get("extra_metrics") or {}).values() if v is not None),
+            ]
+            if any(needle in normalize(item) for item in haystack):
+                matched.append(row)
+        filtered = matched
+
+    total = len(filtered)
+    sliced = filtered[offset:] if limit is None else filtered[offset : offset + limit]
+    meta = metadata or {}
+    extra_dims, extra_metrics, table_dims = _resolve_extra_schema(records, meta)
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit if limit is not None else total,
+        "rows": [_serialize_record(row) for row in sliced],
+        "extraDimensions": extra_dims,
+        "extraMetrics": extra_metrics,
+        "tableDimensions": table_dims,
+        "hasPersonIds": any(bool(row.get("person_id")) for row in records),
+        "hasCapacityData": meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records),
+    }
+
+
+def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, metadata: dict | None = None) -> dict:
+    labels = load_constants()["filters"]
+    rules = load_constants()["classification"]
+    periods = sorted({row["period"] for row in records}, key=natural_key)
+    municipalities = sorted({row["zone"] for row in records}, key=natural_key)
+    violence_types = sorted({row["violence"] for row in records}, key=natural_key)
+    service_types = sorted({row["service"] for row in records}, key=natural_key)
+
+    meta = metadata or {}
+    default_labels = {
+        "zone": "Municipio (hecho)",
+        "period": "Periodo de corte",
+        "violence": "Tipo de violencia",
+        "service": "Tipo de servicio",
+        "cases": "Casos registrados",
+        "capacity": "Atenciones / capacidad",
+    }
+    dim_labels = {**default_labels, **(meta.get("columnLabels") or {})}
+    extra_dimensions, extra_metrics, table_dimensions = _resolve_extra_schema(records, meta)
 
     has_person_ids = any(bool(row.get("person_id")) for row in records)
     has_capacity_data = meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records)
     has_residence_distinction = any(bool(row.get("residence_zone")) for row in records)
     has_event_date_distinction = any(bool(row.get("event_date")) for row in records)
 
-    row_parts = [_extract_date_parts(row.get("period", ""), row.get("event_date", "")) for row in records]
+    filter_year = filters.get("year") or "Todos"
+    row_parts, filtered_pairs = _filter_pairs(records, filters, labels)
     years = sorted({yr for yr, _mo, _dy in row_parts if yr}, key=natural_key)
     months = sorted({mo for _yr, mo, _dy in row_parts if mo}, key=natural_key)
     days = sorted({dy for _yr, _mo, dy in row_parts if dy}, key=natural_key)
-
-    filter_year = filters.get("year") or "Todos"
-    filter_month = filters.get("month") or "Todos"
-    filter_day = filters.get("day") or "Todos"
-    if filter_month not in {"Todos", ""} and filter_month.isdigit():
-        filter_month = filter_month.zfill(2)
-    if filter_day not in {"Todos", ""} and filter_day.isdigit():
-        filter_day = filter_day.zfill(2)
-
-    def selected(row: dict, parts: tuple[str, str, str]) -> bool:
-        yr, mo, dy = parts
-        if filters["period"] != labels["allPeriods"]:
-            if row["period"] != filters["period"] and yr != filters["period"]:
-                return False
-        if filter_year not in {"Todos", ""} and yr != filter_year:
-            return False
-        if filter_month not in {"Todos", ""} and mo != filter_month:
-            return False
-        if filter_day not in {"Todos", ""} and dy != filter_day:
-            return False
-        if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
-            return False
-        if filters["violence"] != labels["allViolence"] and row["violence"] != filters["violence"]:
-            return False
-        if filters["service"] != labels["allServices"] and row["service"] != filters["service"]:
-            return False
-        return True
-
-    filtered_pairs = [(row, parts) for row, parts in zip(records, row_parts) if selected(row, parts)]
     filtered = [row for row, _ in filtered_pairs]
 
     zone_year_cases: dict[str, dict[str, float]] = {}
@@ -613,6 +703,8 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "extraMetrics": {
                     col: {
                         "avg": round(sum(vals) / len(vals), 2) if vals else None,
+                        "mode": mode_val,
+                        "modeCount": mode_count,
                         "min": round(min(vals), 2) if vals else None,
                         "max": round(max(vals), 2) if vals else None,
                         "validCount": len(vals),
@@ -620,6 +712,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                     for col in extra_metrics
                     for vals in [bucket["extra_metrics_vals"].get(col, [])]
                     if vals
+                    for mode_val, mode_count in [_compute_mode(vals)]
                 },
                 "extraDimensions": {
                     col: max(counts.items(), key=lambda kv: kv[1])[0]
@@ -669,23 +762,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     mobile_route = _build_mobile_route(summaries)
     dynamic_breakdowns = _build_dynamic_breakdowns(filtered, dim_labels, extra_dimensions, extra_metrics)
     dynamic_metrics = _build_dynamic_metrics(filtered, extra_metrics)
-    record_rows = [
-        {
-            "zone": row["zone"],
-            "period": row["period"],
-            "violence": row["violence"],
-            "service": row["service"],
-            "personId": row.get("person_id") or "",
-            "cases": row["cases"],
-            "casesStatus": row.get("cases_status") or ("value" if row["cases"] is not None else "missing"),
-            "capacity": row["capacity"],
-            "capacityStatus": row.get("capacity_status") or ("value" if row["capacity"] is not None else "na"),
-            "extraDims": dict(row.get("extra_dims") or {}),
-            "extraMetrics": dict(row.get("extra_metrics") or {}),
-            "extraMetricStatuses": dict(row.get("extra_metric_statuses") or {}),
-        }
-        for row in filtered[:1000]
-    ]
+    record_rows = [_serialize_record(row) for row in filtered[:250]]
 
     return {
         "periods": periods,

@@ -30,6 +30,7 @@ export function DashboardView() {
   const { user, ready } = useAuth()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<"overview" | "charts" | "table">("overview")
+  const [expandComparison, setExpandComparison] = useState(false)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const isAdmin = ready && user?.role === "admin"
 
@@ -339,8 +340,12 @@ export function DashboardView() {
           {dynamicMetrics.map((metric) => (
             <div className="generality-chip" key={`m-${metric.key}`}>
               <span className="gen-label">{humanizeColumnLabel(metric.label)}</span>
-              <strong>{metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin dato"}</strong>
+              <strong>
+                {metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin dato"}
+                {metric.mode !== null && metric.mode !== undefined ? ` · Moda ${fmt(metric.mode)}` : ""}
+              </strong>
               <small>
+                {metric.modeCount ? `Moda: ${fmt(metric.modeCount)} rep. · ` : ""}
                 {metric.min !== null && metric.max !== null ? `${fmt(metric.min)}–${fmt(metric.max)} · ` : ""}
                 {fmt(metric.validCount)} válidos
               </small>
@@ -433,6 +438,7 @@ export function DashboardView() {
               }
               onShowAll={() => {
                 setFilters({ ...filters, municipality: labels.allZones })
+                setExpandComparison(true)
                 setActiveTab("charts")
               }}
             />
@@ -452,6 +458,7 @@ export function DashboardView() {
             missingTotal={missingTotal}
             naTotal={naTotal}
             undatedCases={data?.undatedCasesCount ?? 0}
+            defaultExpandedComparison={expandComparison}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
             onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}
             onFilterBy={(field, val) => setFilters({ ...filters, [field]: val })}
@@ -470,6 +477,7 @@ export function DashboardView() {
             hasCapacityData={hasCapacityData}
             hasResidenceDistinction={data?.hasResidenceDistinction ?? false}
             dimensionLabels={dimLabels}
+            filters={filters}
             selected={selectedMunicipality}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
           />

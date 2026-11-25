@@ -294,3 +294,44 @@ def test_euv_column_with_many_values_is_excluded_from_charts_and_kept_in_tables(
     assert by_mun["Apizaco"]["tableCounts"]["EUV"] == 30
     assert by_mun["Tlaxcala"]["tableCounts"]["EUV"] == 30
     assert board["recordRows"][0]["extraDims"]["EUV"] == "EUV-1000"
+
+
+def test_age_mode_and_demographic_column_mapping_guards() -> None:
+    from app.services.analytics import query_records
+    from app.services.rules import validate_processed_dataset
+
+    rows = [
+        {"VICTIMA_MUNICIPIO": "Apizaco", "TIPO_VIOLENCIA": "FISICA", "SERVICIO": "NINGUNO", "EDAD": "25", "TOTAL_HIJOS": "0"},
+        {"VICTIMA_MUNICIPIO": "Apizaco", "TIPO_VIOLENCIA": "FISICA", "SERVICIO": "NINGUNO", "EDAD": "25", "TOTAL_HIJOS": "2"},
+        {"VICTIMA_MUNICIPIO": "Apizaco", "TIPO_VIOLENCIA": "SEXUAL", "SERVICIO": "JURIDICA", "EDAD": "31", "TOTAL_HIJOS": "1"},
+        {"VICTIMA_MUNICIPIO": "Tlaxcala", "TIPO_VIOLENCIA": "FISICA", "SERVICIO": "NINGUNO", "EDAD": "40", "TOTAL_HIJOS": "0"},
+    ]
+    mapping = suggest_mapping(list(rows[0].keys()), rows)
+    assert mapping["cases"] == ""
+    assert mapping["capacity"] == ""
+    assert mapping["person"] == ""
+
+    cleaned, audit, meta = validate_processed_dataset(rows, mapping)
+    board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "agresores.xlsx", "synthetic": False, "audit": audit},
+        meta,
+    )
+    edad_metric = next(m for m in board["dynamicMetrics"] if m["key"] == "EDAD")
+    assert edad_metric["mode"] == 25.0
+    assert edad_metric["modeCount"] == 2
+    assert board["trends"] == []
+    by_mun = {item["name"]: item for item in board["summaries"]}
+    assert by_mun["Apizaco"]["extraMetrics"]["EDAD"]["mode"] == 25.0
+
+    page = query_records(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        meta,
+        q="Tlaxcala",
+        offset=0,
+        limit=10,
+    )
+    assert page["total"] == 1
+    assert page["rows"][0]["zone"] == "Tlaxcala"

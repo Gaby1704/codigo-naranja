@@ -1,4 +1,5 @@
 import { ArrowUpRight, Layers, TrendingUp } from "lucide-react"
+import { useState } from "react"
 import type {
   ClassificationColor,
   DynamicBreakdown,
@@ -23,15 +24,21 @@ export function GeneralComparisonCard({
   onSelect,
   onShowAll,
   maxRows = 10,
+  allowInlineExpand = false,
+  defaultExpanded = false,
 }: {
   summaries: Summary[]
   hasCapacityData: boolean
   selected: string
   onSelect: (name: string) => void
-  onShowAll: () => void
+  onShowAll?: () => void
   maxRows?: number
+  allowInlineExpand?: boolean
+  defaultExpanded?: boolean
 }) {
-  const rows = summaries.slice(0, maxRows)
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  const showAll = allowInlineExpand && expanded
+  const rows = showAll ? summaries : summaries.slice(0, maxRows)
   const maxScale = Math.max(
     ...rows.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
     1,
@@ -91,9 +98,25 @@ export function GeneralComparisonCard({
             <i className="legend-square capacity" /> Atenciones
           </span>
         )}
-        <button type="button" onClick={onShowAll}>
-          Ver todos <ArrowUpRight size={13} />
-        </button>
+        {(allowInlineExpand ? summaries.length > maxRows : Boolean(onShowAll)) && (
+          <button
+            type="button"
+            onClick={() => {
+              if (allowInlineExpand) {
+                setExpanded((prev) => !prev)
+              } else {
+                onShowAll?.()
+              }
+            }}
+          >
+            {allowInlineExpand
+              ? expanded
+                ? `Ver top ${maxRows}`
+                : `Ver todos (${summaries.length})`
+              : "Ver todos"}{" "}
+            <ArrowUpRight size={13} />
+          </button>
+        )}
       </div>
     </section>
   )
@@ -111,6 +134,7 @@ export function Charts({
   missingTotal,
   naTotal,
   undatedCases = 0,
+  defaultExpandedComparison = false,
   onSelect,
   onShowAll,
   onFilterBy,
@@ -126,10 +150,13 @@ export function Charts({
   missingTotal: number
   naTotal: number
   undatedCases?: number
+  defaultExpandedComparison?: boolean
   onSelect: (name: string) => void
   onShowAll: () => void
   onFilterBy?: (field: "violence" | "service" | "period", value: string) => void
 }) {
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({})
+  const hasTrendData = trends.length > 0 || (forecast?.available && forecast.points.length > 0)
   const forecastPoints = forecast?.available ? forecast.points : []
   const trendValues = [
     ...trends.flatMap((item) => (hasCapacityData ? [item.cases, item.capacity] : [item.cases])),
@@ -169,9 +196,12 @@ export function Charts({
         onSelect={onSelect}
         onShowAll={onShowAll}
         maxRows={10}
+        allowInlineExpand
+        defaultExpanded={defaultExpandedComparison}
       />
 
-      <section className="panel trend-panel">
+      {hasTrendData && (
+        <section className="panel trend-panel">
         <div className="panel-heading compact">
           <div>
             <h2>{trendHeadline}</h2>
@@ -250,6 +280,7 @@ export function Charts({
           Estimación lineal de tendencia a partir del histórico disponible; no representa predicción definitiva ni tasa poblacional.
         </p>
       </section>
+      )}
 
       {dynamicBreakdowns.map((breakdown, bdIdx) => {
         const displayLabel = humanizeColumnLabel(breakdown.label)
@@ -304,7 +335,7 @@ export function Charts({
               </span>
             </div>
             <div className="bar-chart">
-              {breakdown.items.map((item) => {
+              {(expandedCards[breakdown.key] ? breakdown.items : breakdown.items.slice(0, 8)).map((item) => {
                 const width = item.cases === 0 ? 0 : Math.max(3, (item.cases / maxCatCases) * 100)
                 return (
                   <button
@@ -329,6 +360,20 @@ export function Charts({
                 )
               })}
             </div>
+            {breakdown.items.length > 8 && (
+              <div className="chart-legend">
+                <span>Mostrando {expandedCards[breakdown.key] ? breakdown.items.length : 8} de {breakdown.items.length}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedCards((prev) => ({ ...prev, [breakdown.key]: !prev[breakdown.key] }))
+                  }
+                >
+                  {expandedCards[breakdown.key] ? "Ver menos" : `Ver todos (${breakdown.items.length})`}{" "}
+                  <ArrowUpRight size={13} />
+                </button>
+              </div>
+            )}
           </section>
         )
       })}
@@ -346,13 +391,19 @@ export function Charts({
             {dynamicMetrics.map((metric) => (
               <div className="dynamic-metric-card" key={metric.key}>
                 <span>{humanizeColumnLabel(metric.label)}</span>
-                <strong>{metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin datos válidos"}</strong>
+                <strong>
+                  {metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin datos válidos"}
+                  {metric.mode !== null && metric.mode !== undefined ? ` · Moda ${fmt(metric.mode)}` : ""}
+                </strong>
                 <small>
-                  Suma: {fmt(metric.sum)} · Rango: {metric.min !== null ? fmt(metric.min) : "—"} a{" "}
-                  {metric.max !== null ? fmt(metric.max) : "—"}
+                  {metric.mode !== null && metric.mode !== undefined && metric.modeCount
+                    ? `Moda: ${fmt(metric.modeCount)} rep. · `
+                    : ""}
+                  Rango: {metric.min !== null ? fmt(metric.min) : "—"} a{" "}
+                  {metric.max !== null ? fmt(metric.max) : "—"} · Suma: {fmt(metric.sum)}
                 </small>
                 <small>
-                  Ceros: {metric.zeroCount} · N/A: {metric.naCount} · Faltantes: {metric.missingCount}
+                  Válidos: {fmt(metric.validCount)} · Ceros: {metric.zeroCount} · N/A: {metric.naCount} · Faltantes: {metric.missingCount}
                 </small>
               </div>
             ))}
