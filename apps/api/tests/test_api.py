@@ -200,3 +200,49 @@ def test_login_upload_and_dynamic_validation(client: TestClient) -> None:
         files={"file": ("casos.xlsx", _workbook(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
     )
     assert blocked.status_code == 401
+
+
+def test_quarantine_sheet_is_excluded_from_system(client: TestClient) -> None:
+    assert client.post("/api/auth/login", headers=HEADERS, json={"email": EMAIL, "password": PASSWORD}).status_code == 200
+
+    mixed = Workbook()
+    q_first = mixed.active
+    q_first.title = "Cuarentena"
+    q_first.append(["Municipio", "Fecha", "Tipo", "Servicio"])
+    q_first.append(["Apizaco", "2024-01-01", "Física", "Jurídica"])
+    clean_sheet = mixed.create_sheet("Datos_Limpios")
+    clean_sheet.append(["Municipio", "Fecha", "Tipo", "Servicio"])
+    clean_sheet.append(["Tlaxcala", "2025-03-01", "Psicológica", "Psicología"])
+    mixed_buf = BytesIO()
+    mixed.save(mixed_buf)
+
+    preview = client.post(
+        "/api/datasets/uploads",
+        headers=HEADERS,
+        files={"file": ("mixto.xlsx", mixed_buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["sheets"] == ["Datos_Limpios"]
+    assert body["sheet"] == "Datos_Limpios"
+    assert client.post(
+        f"/api/datasets/uploads/{body['uploadId']}/sheet",
+        headers=HEADERS,
+        json={"sheet": "Cuarentena"},
+    ).status_code == 400
+
+    only_quarantine = Workbook()
+    oq = only_quarantine.active
+    oq.title = "Cuarentena"
+    oq.append(["Municipio", "Fecha"])
+    oq.append(["Apizaco", "2024-01-01"])
+    oq_buf = BytesIO()
+    only_quarantine.save(oq_buf)
+
+    rejected = client.post(
+        "/api/datasets/uploads",
+        headers=HEADERS,
+        files={"file": ("solo_cuarentena.xlsx", oq_buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert rejected.status_code == 400
+    assert "Cuarentena" in rejected.json()["detail"]

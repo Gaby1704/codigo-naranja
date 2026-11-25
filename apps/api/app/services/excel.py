@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from io import BytesIO
+import re
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
@@ -8,6 +9,7 @@ from app.config import get_settings
 
 MAX_COLUMNS = 40
 MAX_CELL = 500
+_SHEET_SPLIT = re.compile(r"[^a-z0-9]+")
 
 
 class WorkbookError(ValueError):
@@ -76,14 +78,32 @@ def parse_workbook(payload: bytes, filename: str) -> dict[str, list[dict[str, st
     raise WorkbookError("Selecciona un archivo Excel .xlsx o .xls.")
 
 
+def _is_quarantine_sheet(title: str) -> bool:
+    """Return True when a worksheet holds quarantined rows that must not be ingested."""
+    tokens = _SHEET_SPLIT.sub(" ", (title or "").strip().lower()).split()
+    return "cuarentena" in tokens
+
+
+def _finalize_sheets(sheets: dict[str, list[dict[str, str]]], skipped_quarantine: bool) -> dict[str, list[dict[str, str]]]:
+    if sheets:
+        return sheets
+    if skipped_quarantine:
+        raise WorkbookError("La hoja 'Cuarentena' está excluida y no se utiliza en el sistema. Carga una hoja con datos limpios.")
+    raise WorkbookError("El libro no contiene filas. Selecciona una hoja con registros.")
+
+
 def _parse_xlsx(payload: bytes) -> dict[str, list[dict[str, str]]]:
     try:
         workbook = load_workbook(BytesIO(payload), read_only=True, data_only=True)
     except Exception as exc:
         raise WorkbookError("No fue posible leer el archivo. Verifica que sea un libro Excel válido.") from exc
     sheets: dict[str, list[dict[str, str]]] = {}
+    skipped_quarantine = False
     try:
         for sheet in workbook.worksheets:
+            if _is_quarantine_sheet(sheet.title):
+                skipped_quarantine = True
+                continue
             matrix: list[list[str]] = []
             for row in sheet.iter_rows(values_only=True):
                 if len(matrix) > get_settings().row_limit + 1:
@@ -94,9 +114,7 @@ def _parse_xlsx(payload: bytes) -> dict[str, list[dict[str, str]]]:
                 sheets[sheet.title] = parsed
     finally:
         workbook.close()
-    if not sheets:
-        raise WorkbookError("El libro no contiene filas. Selecciona una hoja con registros.")
-    return sheets
+    return _finalize_sheets(sheets, skipped_quarantine)
 
 
 def _parse_xls(payload: bytes) -> dict[str, list[dict[str, str]]]:
@@ -109,7 +127,11 @@ def _parse_xls(payload: bytes) -> dict[str, list[dict[str, str]]]:
     except Exception as exc:
         raise WorkbookError("No fue posible leer el archivo .xls.") from exc
     sheets: dict[str, list[dict[str, str]]] = {}
+    skipped_quarantine = False
     for sheet in book.sheets():
+        if _is_quarantine_sheet(sheet.name):
+            skipped_quarantine = True
+            continue
         matrix = []
         limit = get_settings().row_limit + 1
         for row_index in range(min(sheet.nrows, limit + 1)):
@@ -119,9 +141,7 @@ def _parse_xls(payload: bytes) -> dict[str, list[dict[str, str]]]:
         parsed = _rows_from_matrix(matrix)
         if parsed:
             sheets[sheet.name] = parsed
-    if not sheets:
-        raise WorkbookError("El libro no contiene filas. Selecciona una hoja con registros.")
-    return sheets
+    return _finalize_sheets(sheets, skipped_quarantine)
 
 
 def build_template() -> bytes:

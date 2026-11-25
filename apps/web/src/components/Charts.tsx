@@ -256,9 +256,11 @@ export function Charts({
             ? "dyn-temporal"
             : breakdown.kind === "status"
               ? "dyn-status"
-              : bdIdx % 2 === 0
-                ? "dyn-cat-a"
-                : "dyn-cat-b"
+              : breakdown.kind === "numeric"
+                ? "dyn-numeric"
+                : bdIdx % 2 === 0
+                  ? "dyn-cat-a"
+                  : "dyn-cat-b"
         const canFilter =
           breakdown.filterField === "violence" ||
           breakdown.filterField === "service" ||
@@ -269,11 +271,15 @@ export function Charts({
               <div>
                 <h2>
                   {top
-                    ? `${top.name} concentra el ${top.sharePct}% en ${displayLabel}`
+                    ? breakdown.kind === "numeric"
+                      ? `Distribución de ${displayLabel}: predomina ${top.name} (${top.sharePct}%)`
+                      : `${top.name} concentra el ${top.sharePct}% en ${displayLabel}`
                     : `Sin registros en ${displayLabel}`}
                 </h2>
                 <p>
-                  {displayLabel} · {breakdown.totalCategories} categorías
+                  {breakdown.kind === "numeric"
+                    ? `${displayLabel} · ${breakdown.totalCategories} rangos`
+                    : `${displayLabel} · ${breakdown.totalCategories} categorías`}
                 </p>
               </div>
               <span className="axis-tag">

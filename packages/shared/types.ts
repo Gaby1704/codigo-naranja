@@ -19,6 +19,13 @@ export type MunicipalityYearItem = {
   deltaPct: number | null
 }
 
+export type SummaryExtraMetric = {
+  avg: number | null
+  min: number | null
+  max: number | null
+  validCount: number
+}
+
 export type Summary = {
   name: string
   cases: number
@@ -39,6 +46,8 @@ export type Summary = {
   avgCapacityPerRecord: number | null
   violenceBreakdown: MunicipalityViolenceItem[]
   yearlyTrend: MunicipalityYearItem[]
+  extraMetrics?: Record<string, SummaryExtraMetric>
+  extraDimensions?: Record<string, string>
   classification: Classification
 }
 
@@ -99,7 +108,7 @@ export type DynamicBreakdownItem = {
 export type DynamicBreakdown = {
   key: string
   label: string
-  kind: "category" | "status" | "temporal"
+  kind: "category" | "status" | "temporal" | "numeric"
   filterField: "violence" | "service" | "period" | "zone" | null
   totalCategories: number
   items: DynamicBreakdownItem[]
@@ -137,6 +146,21 @@ export type DashboardSource = {
   audit: Audit | null
 }
 
+export type RecordRow = {
+  zone: string
+  period: string
+  violence: string
+  service: string
+  personId: string
+  cases: number | null
+  casesStatus: string
+  capacity: number | null
+  capacityStatus: string
+  extraDims: Record<string, string>
+  extraMetrics: Record<string, number | null>
+  extraMetricStatuses: Record<string, string>
+}
+
 export type Dashboard = {
   periods: string[]
   years: string[]
@@ -162,8 +186,10 @@ export type Dashboard = {
   naCapacityCount: number
   priorityCount: number
   dimensionLabels: DimensionLabels
+  extraDimensions: string[]
   dynamicBreakdowns: DynamicBreakdown[]
   dynamicMetrics: DynamicMetric[]
+  recordRows: RecordRow[]
   mobileRoute: MobileRouteStop[]
   forecast: Forecast
   source: DashboardSource
@@ -210,15 +236,4 @@ export type ZonePoint = {
   x: number
   y: number
   labelPos?: "left" | "right" | "top" | "bottom"
-}
-
-export type RecordRow = {
-  zone: string
-  residenceZone: string
-  period: string
-  eventDate: string
-  violence: string
-  service: string
-  cases: number | null
-  capacity: number | null
 }

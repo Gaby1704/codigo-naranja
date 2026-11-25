@@ -89,6 +89,12 @@ export function DashboardView() {
     (filters.service !== labels.allServices ? 1 : 0)
 
   const selectedMunicipality = filters.municipality !== labels.allZones ? filters.municipality : (topZone?.name ?? "")
+  const dynamicMetrics = data?.dynamicMetrics ?? []
+  const extraBreakdowns = (data?.dynamicBreakdowns ?? []).filter(
+    (item) => item.key.startsWith("extra:") || item.key.startsWith("metric:"),
+  )
+  const extraDimensions = data?.extraDimensions ?? []
+  const recordRows = data?.recordRows ?? []
 
   return (
     <>
@@ -280,6 +286,36 @@ export function DashboardView() {
         )}
       </section>
 
+      {(dynamicMetrics.length > 0 || extraBreakdowns.length > 0) && (
+        <section className="generalities-strip" aria-label="Generalidades de columnas adicionales">
+          {dynamicMetrics.map((metric) => (
+            <div className="generality-chip" key={`m-${metric.key}`}>
+              <span className="gen-label">{humanizeColumnLabel(metric.label)}</span>
+              <strong>{metric.avg !== null ? `Prom. ${fmt(metric.avg)}` : "Sin dato"}</strong>
+              <small>
+                {metric.min !== null && metric.max !== null ? `${fmt(metric.min)}–${fmt(metric.max)} · ` : ""}
+                {fmt(metric.validCount)} válidos
+              </small>
+            </div>
+          ))}
+          {extraBreakdowns
+            .filter((bd) => bd.kind !== "numeric" && bd.items.length > 0)
+            .slice(0, 4)
+            .map((bd) => {
+              const top = bd.items[0]
+              return (
+                <div className="generality-chip" key={`d-${bd.key}`}>
+                  <span className="gen-label">{humanizeColumnLabel(bd.label)}</span>
+                  <strong>{top.name}</strong>
+                  <small>
+                    {top.sharePct}% ({fmt(top.cases)} casos) · {bd.totalCategories} cat.
+                  </small>
+                </div>
+              )
+            })}
+        </section>
+      )}
+
       <nav className="dashboard-tabs" role="tablist" aria-label="Vistas principales del tablero">
         <button
           type="button"
@@ -321,6 +357,7 @@ export function DashboardView() {
               hasPersonIds={hasPersonIds}
               hasCapacityData={hasCapacityData}
               hasResidenceDistinction={data?.hasResidenceDistinction ?? false}
+              dynamicMetrics={dynamicMetrics}
               onFilterMunicipality={(municipality) => setFilters({ ...filters, municipality })}
             />
             <GeneralComparisonCard
@@ -351,7 +388,7 @@ export function DashboardView() {
             dynamicMetrics={data?.dynamicMetrics ?? []}
             hasCapacityData={hasCapacityData}
             selected={selectedMunicipality}
-            latestPeriod={data?.periods.at(-1) ?? "—"}
+            latestPeriod={data?.trends.at(-1)?.period ?? "—"}
             missingTotal={missingTotal}
             naTotal={naTotal}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
@@ -363,9 +400,14 @@ export function DashboardView() {
         {activeTab === "table" && (
           <ActionTable
             summaries={summaries}
+            dynamicMetrics={dynamicMetrics}
+            extraDimensions={extraDimensions}
+            recordRows={recordRows}
+            totalRecords={totalRecords}
             hasPersonIds={hasPersonIds}
             hasCapacityData={hasCapacityData}
             hasResidenceDistinction={data?.hasResidenceDistinction ?? false}
+            dimensionLabels={dimLabels}
             selected={selectedMunicipality}
             onSelect={(municipality) => setFilters({ ...filters, municipality })}
           />

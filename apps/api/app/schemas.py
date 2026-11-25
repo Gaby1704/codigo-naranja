@@ -37,6 +37,13 @@ class MunicipalityYearItem(BaseModel):
     deltaPct: float | None
 
 
+class SummaryExtraMetric(BaseModel):
+    avg: float | None = None
+    min: float | None = None
+    max: float | None = None
+    validCount: int = 0
+
+
 class Summary(BaseModel):
     name: str
     cases: float
@@ -57,6 +64,8 @@ class Summary(BaseModel):
     avgCapacityPerRecord: float | None
     violenceBreakdown: list[MunicipalityViolenceItem] = []
     yearlyTrend: list[MunicipalityYearItem] = []
+    extraMetrics: dict[str, SummaryExtraMetric] = {}
+    extraDimensions: dict[str, str] = {}
     classification: Classification
 
 
@@ -117,7 +126,7 @@ class DynamicBreakdownItem(BaseModel):
 class DynamicBreakdown(BaseModel):
     key: str
     label: str
-    kind: Literal["category", "status", "temporal"]
+    kind: Literal["category", "status", "temporal", "numeric"]
     filterField: Literal["violence", "service", "period", "zone"] | None
     totalCategories: int
     items: list[DynamicBreakdownItem]
@@ -155,6 +164,21 @@ class Source(BaseModel):
     audit: Audit | None
 
 
+class RecordRow(BaseModel):
+    zone: str
+    period: str
+    violence: str
+    service: str
+    personId: str = ""
+    cases: float | None = None
+    casesStatus: str = "value"
+    capacity: float | None = None
+    capacityStatus: str = "na"
+    extraDims: dict[str, str] = {}
+    extraMetrics: dict[str, float | None] = {}
+    extraMetricStatuses: dict[str, str] = {}
+
+
 class DashboardResponse(BaseModel):
     periods: list[str]
     years: list[str] = []
@@ -180,8 +204,10 @@ class DashboardResponse(BaseModel):
     naCapacityCount: int
     priorityCount: int
     dimensionLabels: DimensionLabels
+    extraDimensions: list[str] = []
     dynamicBreakdowns: list[DynamicBreakdown]
     dynamicMetrics: list[DynamicMetric]
+    recordRows: list[RecordRow] = []
     mobileRoute: list[MobileRouteStop]
     forecast: Forecast
     source: Source

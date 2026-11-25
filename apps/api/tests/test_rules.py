@@ -5,6 +5,7 @@ from app.services.rules import (
     demo_records,
     js_round,
     parse_numeric_cell,
+    suggest_mapping,
     validate_processed_rows,
 )
 
@@ -141,3 +142,99 @@ def test_dashboard_excludes_incomplete_periods_from_five_year_forecast() -> None
     assert len(forecast["points"]) == 5
     assert forecast["points"][0]["period"] == "2026"
     assert forecast["direction"] == "al alza"
+
+
+def test_dato_completo_is_not_mapped_as_period_status_and_unspecified_excluded_from_trends() -> None:
+    headers = ["FOLIO", "MUNICIPIO", "TIPO_DE_VIOLENCIA", "FECHA_DE_REGISTRO", "SERVICIO_RECIBIDO_ATENCION", "DATO_COMPLETO"]
+    suggested = suggest_mapping(headers)
+    assert suggested["periodStatus"] == ""
+
+    rows = [
+        {"MUNICIPIO": "Apizaco", "FECHA_DE_REGISTRO": "2024-06-27", "TIPO_DE_VIOLENCIA": "ECONOMICA", "SERVICIO_RECIBIDO_ATENCION": "NINGUNO", "DATO_COMPLETO": "False"},
+        {"MUNICIPIO": "Apizaco", "FECHA_DE_REGISTRO": "2025-05-10", "TIPO_DE_VIOLENCIA": "FISICA", "SERVICIO_RECIBIDO_ATENCION": "JURIDICA", "DATO_COMPLETO": "False"},
+        {"MUNICIPIO": "Apizaco", "FECHA_DE_REGISTRO": "", "TIPO_DE_VIOLENCIA": "FISICA", "SERVICIO_RECIBIDO_ATENCION": "JURIDICA", "DATO_COMPLETO": "False"},
+    ]
+    cleaned, _audit = validate_processed_rows(rows, suggested)
+    board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "base_limpio.xlsx", "synthetic": False, "audit": None},
+    )
+    assert [t["period"] for t in board["trends"]] == ["2024", "2025"]
+    assert board["forecast"]["available"] is True
+    assert board["forecast"]["excludedIncompletePeriods"] == []
+
+
+def test_dynamic_columns_like_edad_feed_charts_generalities_and_listings() -> None:
+    from app.services.rules import detect_extra_schema, validate_processed_dataset
+
+    rows = [
+        {
+            "FOLIO": "1",
+            "MUNICIPIO": "Apizaco",
+            "FECHA_DE_REGISTRO": "2024-02-10",
+            "FECHA_DE_REGISTRO_ANIO": "2024",
+            "TIPO_DE_VIOLENCIA": "FISICA",
+            "SERVICIO_RECIBIDO_ATENCION": "JURIDICA",
+            "EDAD": "16",
+            "ESCOLARIDAD": "PREPARATORIA",
+            "HIJOS": "0",
+            "FOLIO_OUTLIER": "False",
+            "DATO_COMPLETO": "False",
+        },
+        {
+            "FOLIO": "2",
+            "MUNICIPIO": "Apizaco",
+            "FECHA_DE_REGISTRO": "2025-03-11",
+            "FECHA_DE_REGISTRO_ANIO": "2025",
+            "TIPO_DE_VIOLENCIA": "PSICOLOGICA",
+            "SERVICIO_RECIBIDO_ATENCION": "PSICOLOGICA",
+            "EDAD": "32",
+            "ESCOLARIDAD": "PREPARATORIA",
+            "HIJOS": "2",
+            "FOLIO_OUTLIER": "False",
+            "DATO_COMPLETO": "False",
+        },
+        {
+            "FOLIO": "3",
+            "MUNICIPIO": "Tlaxcala",
+            "FECHA_DE_REGISTRO": "2025-04-12",
+            "FECHA_DE_REGISTRO_ANIO": "2025",
+            "TIPO_DE_VIOLENCIA": "ECONOMICA",
+            "SERVICIO_RECIBIDO_ATENCION": "TRABAJO SOCIAL",
+            "EDAD": "48",
+            "ESCOLARIDAD": "LICENCIATURA",
+            "HIJOS": "1",
+            "FOLIO_OUTLIER": "False",
+            "DATO_COMPLETO": "False",
+        },
+    ]
+    mapping = suggest_mapping(list(rows[0].keys()), rows)
+    extra_dims, extra_metrics = detect_extra_schema(rows, mapping)
+    assert "ESCOLARIDAD" in extra_dims
+    assert "FOLIO_OUTLIER" not in extra_dims
+    assert "DATO_COMPLETO" not in extra_dims
+    assert "EDAD" in extra_metrics
+    assert "HIJOS" in extra_metrics
+    assert "FECHA_DE_REGISTRO_ANIO" not in extra_metrics
+
+    cleaned, audit, meta = validate_processed_dataset(rows, mapping)
+    board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "dinamico.xlsx", "synthetic": False, "audit": audit},
+        meta,
+    )
+    breakdown_keys = {item["key"]: item for item in board["dynamicBreakdowns"]}
+    assert "extra:ESCOLARIDAD" in breakdown_keys
+    assert "metric:EDAD" in breakdown_keys
+    assert breakdown_keys["metric:EDAD"]["kind"] == "numeric"
+    assert "metric:HIJOS" in breakdown_keys
+
+    by_mun = {item["name"]: item for item in board["summaries"]}
+    assert by_mun["Apizaco"]["extraMetrics"]["EDAD"]["avg"] == 24.0
+    assert by_mun["Apizaco"]["extraDimensions"]["ESCOLARIDAD"] == "PREPARATORIA"
+    assert len(board["recordRows"]) == 3
+    assert board["recordRows"][0]["extraMetrics"]["EDAD"] == 16.0
+    assert board["recordRows"][0]["extraMetrics"]["HIJOS"] == 0.0
+    assert board["recordRows"][0]["extraDims"]["ESCOLARIDAD"] == "PREPARATORIA"

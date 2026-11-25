@@ -185,17 +185,42 @@ def suggest_mapping(headers: list[str], rows: list[dict[str, Any]] | None = None
     }
 
 
+def _is_technical_helper_col(header: str, mapping: dict[str, str]) -> bool:
+    norm_h = normalize(header).replace(" ", "_")
+    if norm_h.endswith("_OUTLIER") or norm_h == "DATO_COMPLETO":
+        return True
+    for key in ("period", "eventDate"):
+        col = mapping.get(key) or ""
+        if col:
+            norm_col = normalize(col).replace(" ", "_")
+            if norm_h in {
+                f"{norm_col}_ANIO",
+                f"{norm_col}_ANO",
+                f"{norm_col}_ANIO_MES",
+                f"{norm_col}_ANO_MES",
+                f"{norm_col}_MES",
+                f"{norm_col}_DIA",
+            }:
+                return True
+    person_col = mapping.get("person") or ""
+    if person_col:
+        norm_person = normalize(person_col).replace(" ", "_")
+        if norm_h == f"{norm_person}_RANGO":
+            return True
+    return False
+
+
 def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[str], list[str]]:
     """Detect extra categorical/temporal/status dimensions and numeric metrics from unmapped Excel columns."""
     if not rows:
         return [], []
     headers = list(rows[0].keys())
     mapped_cols = {col for col in mapping.values() if col}
-    extra_dims: list[str] = []
-    extra_metrics: list[str] = []
+    dim_candidates: list[tuple[int, int, str]] = []
+    metric_candidates: list[tuple[int, int, str]] = []
 
-    for header in headers:
-        if header in mapped_cols:
+    for index, header in enumerate(headers):
+        if header in mapped_cols or _is_technical_helper_col(header, mapping):
             continue
         raw_vals = [row.get(header) for row in rows]
         non_empty = [val for val in raw_vals if normalize(val) not in _MISSING_TOKENS]
@@ -212,14 +237,16 @@ def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> 
             elif status == "na":
                 numeric_ok += 1
         if explicit_num >= 1 and (numeric_ok / len(non_empty)) >= 0.75:
-            extra_metrics.append(header)
+            metric_candidates.append((-explicit_num, index, header))
             continue
 
         distinct = {normalize(val) for val in non_empty if normalize(val) not in _NA_TOKENS}
         if 1 <= len(distinct) <= 35 and (len(non_empty) <= 12 or len(distinct) / len(non_empty) <= 0.65):
-            extra_dims.append(header)
+            dim_candidates.append((-len(non_empty), index, header))
 
-    return extra_dims[:6], extra_metrics[:6]
+    dim_candidates.sort()
+    metric_candidates.sort()
+    return [header for _, _, header in dim_candidates[:10]], [header for _, _, header in metric_candidates[:10]]
 
 
 def validate_processed_dataset(

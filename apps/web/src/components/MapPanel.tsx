@@ -3,8 +3,8 @@ import type { GeoPermissibleObjects } from "d3-geo"
 import { MapPin, RotateCcw, TrendingDown, TrendingUp } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import type { Summary } from "../../../../packages/shared/types"
-import { fmt, fmtMetric, gap } from "../lib/format"
+import type { DynamicMetric, Summary } from "../../../../packages/shared/types"
+import { fmt, fmtMetric, gap, humanizeColumnLabel } from "../lib/format"
 import { findFilterValueForGeoName, findSummaryForGeoName, municipalitiesMatch } from "../lib/municipalities"
 import { filters as labels } from "../lib/shared"
 
@@ -42,6 +42,7 @@ export function MapPanel({
   hasPersonIds,
   hasCapacityData,
   hasResidenceDistinction,
+  dynamicMetrics = [],
   onFilterMunicipality,
 }: {
   summaries: Summary[]
@@ -51,6 +52,7 @@ export function MapPanel({
   hasPersonIds: boolean
   hasCapacityData: boolean
   hasResidenceDistinction: boolean
+  dynamicMetrics?: DynamicMetric[]
   onFilterMunicipality: (municipality: string) => void
 }) {
   const [collection, setCollection] = useState<GeoCollection | null>(null)
@@ -284,6 +286,16 @@ export function MapPanel({
               </div>
             </>
           )}
+          {dynamicMetrics.slice(0, 2).map((metric) => {
+            const stat = activeSummary.extraMetrics?.[metric.key]
+            if (!stat || stat.avg === null) return null
+            return (
+              <div className="detail-stat" key={metric.key}>
+                <span>PROM. {humanizeColumnLabel(metric.label).toUpperCase()}</span>
+                <b>{fmt(stat.avg)}</b>
+              </div>
+            )
+          })}
         </div>
       )}
     </section>

@@ -128,10 +128,97 @@ def _infer_kind(label: str) -> str:
     return "category"
 
 
+def _fmt_bound(val: float) -> str:
+    return str(int(round(val))) if abs(val - round(val)) < 1e-6 else str(round(val, 1))
+
+
+def _build_numeric_distribution_breakdown(filtered: list[dict], col: str) -> dict | None:
+    samples: list[tuple[float, float]] = []
+    for row in filtered:
+        raw_val = (row.get("extra_metrics") or {}).get(col)
+        if raw_val is None:
+            continue
+        cases_val = float(row["cases"]) if row["cases"] is not None else 0.0
+        samples.append((float(raw_val), cases_val))
+    if not samples:
+        return None
+    distinct = sorted({val for val, _ in samples})
+    if len(distinct) < 2:
+        return None
+
+    ordered_buckets: list[dict] = []
+    if len(distinct) <= 8:
+        by_val: dict[float, dict] = {}
+        for val, cases_val in samples:
+            b = by_val.setdefault(val, {"name": _fmt_bound(val), "cases": 0.0, "records": 0})
+            b["cases"] += cases_val
+            b["records"] += 1
+        ordered_buckets = [by_val[val] for val in distinct]
+    elif "EDAD" in normalize(col).replace("_", " ").split():
+        age_bands = [
+            ("0–17 años", lambda v: v < 18),
+            ("18–29 años", lambda v: 18 <= v < 30),
+            ("30–44 años", lambda v: 30 <= v < 45),
+            ("45–59 años", lambda v: 45 <= v < 60),
+            ("60+ años", lambda v: v >= 60),
+        ]
+        for label, pred in age_bands:
+            matched = [(v, c) for v, c in samples if pred(v)]
+            if matched:
+                ordered_buckets.append(
+                    {"name": label, "cases": sum(c for _, c in matched), "records": len(matched)}
+                )
+    else:
+        min_v, max_v = distinct[0], distinct[-1]
+        bin_count = 5
+        step = (max_v - min_v) / bin_count
+        if step <= 0:
+            return None
+        for idx in range(bin_count):
+            lo = min_v + idx * step
+            hi = max_v if idx == bin_count - 1 else min_v + (idx + 1) * step
+            matched = [
+                (v, c)
+                for v, c in samples
+                if (lo <= v <= hi if idx == bin_count - 1 else lo <= v < hi)
+            ]
+            if matched:
+                ordered_buckets.append(
+                    {
+                        "name": f"{_fmt_bound(lo)} – {_fmt_bound(hi)}",
+                        "cases": sum(c for _, c in matched),
+                        "records": len(matched),
+                    }
+                )
+
+    if len(ordered_buckets) < 2:
+        return None
+    total_cases_sum = sum(item["cases"] for item in ordered_buckets)
+    total_records_sum = sum(item["records"] for item in ordered_buckets)
+    denom = total_cases_sum if total_cases_sum > 0 else total_records_sum
+    return {
+        "key": f"metric:{col}",
+        "label": col,
+        "kind": "numeric",
+        "filterField": None,
+        "totalCategories": len(ordered_buckets),
+        "items": [
+            {
+                "name": item["name"],
+                "cases": round(item["cases"], 2),
+                "records": item["records"],
+                "sharePct": round(((item["cases"] if total_cases_sum > 0 else item["records"]) / max(denom, 1)) * 100, 1),
+            }
+            for item in ordered_buckets
+        ],
+    }
+
+
 def _build_dynamic_breakdowns(
     filtered: list[dict],
     dim_labels: dict[str, str],
     extra_dimensions: list[str],
+    extra_metrics: list[str],
 ) -> list[dict]:
     unspecified = load_constants()["filters"]["unspecified"]
     breakdowns: list[dict] = []
@@ -188,7 +275,18 @@ def _build_dynamic_breakdowns(
         )
         if bd is not None:
             breakdowns.append(bd)
-        if len(breakdowns) >= 6:
+        if len(breakdowns) >= 12:
+            return breakdowns
+
+    norm_dims = {normalize(col).replace(" ", "_") for col in extra_dimensions}
+    for col in extra_metrics:
+        norm_col = normalize(col).replace(" ", "_")
+        if f"{norm_col}_RANGO" in norm_dims:
+            continue
+        bd = _build_numeric_distribution_breakdown(filtered, col)
+        if bd is not None:
+            breakdowns.append(bd)
+        if len(breakdowns) >= 12:
             break
 
     return breakdowns
@@ -252,6 +350,20 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     dim_labels = {**default_labels, **(meta.get("columnLabels") or {})}
     extra_dimensions: list[str] = list(meta.get("extraDimensions") or [])
     extra_metrics: list[str] = list(meta.get("extraMetrics") or [])
+    if not extra_dimensions and records:
+        seen_dims: list[str] = []
+        for row in records[:50]:
+            for key in (row.get("extra_dims") or {}).keys():
+                if key not in seen_dims:
+                    seen_dims.append(key)
+        extra_dimensions = seen_dims
+    if not extra_metrics and records:
+        seen_metrics: list[str] = []
+        for row in records[:50]:
+            for key in (row.get("extra_metrics") or {}).keys():
+                if key not in seen_metrics:
+                    seen_metrics.append(key)
+        extra_metrics = seen_metrics
 
     has_person_ids = any(bool(row.get("person_id")) for row in records)
     has_capacity_data = meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records)
@@ -336,8 +448,19 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "cap_na": 0,
                 "cap_missing": 0,
                 "violence": {},
+                "extra_metrics_vals": {},
+                "extra_dim_counts": {},
             },
         )
+        for col in extra_metrics:
+            val = (row.get("extra_metrics") or {}).get(col)
+            if val is not None:
+                bucket["extra_metrics_vals"].setdefault(col, []).append(float(val))
+        for col in extra_dimensions:
+            val_text = str((row.get("extra_dims") or {}).get(col) or "").strip()
+            if val_text and val_text != labels["unspecified"] and val_text != "N/A":
+                col_counts = bucket["extra_dim_counts"].setdefault(col, {})
+                col_counts[val_text] = col_counts.get(val_text, 0) + 1
         bucket["count"] += 1
         vtype = str(row.get("violence") or labels["unspecified"]).strip() or labels["unspecified"]
         vbucket = bucket["violence"].setdefault(vtype, {"name": vtype, "cases": 0.0, "records": 0})
@@ -403,7 +526,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         )[:6]
 
         year_map = zone_year_cases.get(bucket["name"], {})
-        sorted_years = sorted(year_map.keys(), key=natural_key)[-6:]
+        sorted_years = [yr for yr in sorted(year_map.keys(), key=natural_key) if yr != labels["unspecified"]][-6:]
         yearly_trend: list[dict] = []
         prev_cases: float | None = None
         for yr in sorted_years:
@@ -438,17 +561,38 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "avgCapacityPerRecord": avg_cap,
                 "violenceBreakdown": v_breakdown,
                 "yearlyTrend": yearly_trend,
+                "extraMetrics": {
+                    col: {
+                        "avg": round(sum(vals) / len(vals), 2) if vals else None,
+                        "min": round(min(vals), 2) if vals else None,
+                        "max": round(max(vals), 2) if vals else None,
+                        "validCount": len(vals),
+                    }
+                    for col in extra_metrics
+                    for vals in [bucket["extra_metrics_vals"].get(col, [])]
+                    if vals
+                },
+                "extraDimensions": {
+                    col: max(counts.items(), key=lambda kv: kv[1])[0]
+                    for col in extra_dimensions
+                    for counts in [bucket["extra_dim_counts"].get(col, {})]
+                    if counts
+                },
                 "classification": classification,
             }
         )
     summaries.sort(key=lambda item: (item["ratio"], item["cases"]), reverse=True)
 
-    use_yearly_buckets = len(periods) > 6 and len(years) >= 2
+    use_yearly_buckets = (len(periods) > 6 or any(mo for _yr, mo, _dy in row_parts)) and len(years) >= 2
     trend_buckets: dict[str, list[dict]] = {}
+    unspecified_period_count = 0
     for row, parts in zip(records, row_parts):
         if filters["municipality"] != labels["allZones"] and row["zone"] != filters["municipality"]:
             continue
         key = (parts[0] or row["period"]) if use_yearly_buckets else row["period"]
+        if not key or key == labels["unspecified"]:
+            unspecified_period_count += 1
+            continue
         trend_buckets.setdefault(key, []).append(row)
 
     all_trends = []
@@ -469,8 +613,25 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     trends = all_trends[-5:]
     forecast = _build_forecast(all_trends, summaries)
     mobile_route = _build_mobile_route(summaries)
-    dynamic_breakdowns = _build_dynamic_breakdowns(filtered, dim_labels, extra_dimensions)
+    dynamic_breakdowns = _build_dynamic_breakdowns(filtered, dim_labels, extra_dimensions, extra_metrics)
     dynamic_metrics = _build_dynamic_metrics(filtered, extra_metrics)
+    record_rows = [
+        {
+            "zone": row["zone"],
+            "period": row["period"],
+            "violence": row["violence"],
+            "service": row["service"],
+            "personId": row.get("person_id") or "",
+            "cases": row["cases"],
+            "casesStatus": row.get("cases_status") or ("value" if row["cases"] is not None else "missing"),
+            "capacity": row["capacity"],
+            "capacityStatus": row.get("capacity_status") or ("value" if row["capacity"] is not None else "na"),
+            "extraDims": dict(row.get("extra_dims") or {}),
+            "extraMetrics": dict(row.get("extra_metrics") or {}),
+            "extraMetricStatuses": dict(row.get("extra_metric_statuses") or {}),
+        }
+        for row in filtered[:300]
+    ]
 
     return {
         "periods": periods,
@@ -497,8 +658,10 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         "naCapacityCount": na_capacity_count,
         "priorityCount": sum(1 for item in summaries if item["ratio"] >= rules["priorityRatio"]),
         "dimensionLabels": dim_labels,
+        "extraDimensions": extra_dimensions,
         "dynamicBreakdowns": dynamic_breakdowns,
         "dynamicMetrics": dynamic_metrics,
+        "recordRows": record_rows,
         "mobileRoute": mobile_route,
         "forecast": forecast,
         "source": source,

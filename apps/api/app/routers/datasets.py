@@ -17,6 +17,15 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 _UPLOAD_ID = re.compile(r"^[a-f0-9]{32}$")
 
 _TEMPLATE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_PREFERRED_SHEETS = ("datos_limpios", "datos limpios", "registros_procesados", "registros procesados")
+
+
+def _preferred_sheet(sheets: dict[str, list[dict[str, str]]]) -> str:
+    by_lower = {name.strip().lower(): name for name in sheets}
+    for candidate in _PREFERRED_SHEETS:
+        if candidate in by_lower:
+            return by_lower[candidate]
+    return next(iter(sheets))
 
 
 def _pending(upload_id: str, user_id: str):
@@ -83,7 +92,7 @@ async def upload_dataset(
     except WorkbookError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     upload_id = save_upload(user.id, name, sheets)
-    return _preview(upload_id, name, sheets, next(iter(sheets)))
+    return _preview(upload_id, name, sheets, _preferred_sheet(sheets))
 
 
 @router.post("/uploads/{upload_id}/sheet", response_model=UploadPreview)
