@@ -253,7 +253,12 @@ export function Charts({
 
       {dynamicBreakdowns.map((breakdown, bdIdx) => {
         const displayLabel = humanizeColumnLabel(breakdown.label)
-        const top = breakdown.items[0]
+        const meaningful = [...breakdown.items]
+          .filter((item) => !/no especificado/i.test(item.name))
+          .sort((a, b) => b.cases - a.cases)
+        const top = meaningful[0] ?? breakdown.items[0]
+        const isAge = /\bedad\b/i.test(displayLabel)
+        const topAgeHighlights = isAge ? meaningful.slice(0, 3) : []
         const maxCatCases = Math.max(...breakdown.items.map((item) => item.cases), 1)
         const barColorClass =
           breakdown.kind === "temporal"
@@ -274,16 +279,24 @@ export function Charts({
             <div className="panel-heading compact">
               <div>
                 <h2>
-                  {top
-                    ? breakdown.kind === "numeric"
-                      ? `Distribución de ${displayLabel}: predomina ${top.name} (${top.sharePct}%)`
-                      : `${top.name} concentra el ${top.sharePct}% en ${displayLabel}`
-                    : `Sin registros en ${displayLabel}`}
+                  {isAge && topAgeHighlights.length > 0
+                    ? `Rangos más importantes en ${displayLabel}: ${topAgeHighlights
+                        .map((item) => `${item.name} (${item.sharePct}%)`)
+                        .join(", ")}`
+                    : top
+                      ? breakdown.kind === "numeric"
+                        ? `Distribución de ${displayLabel}: predomina ${top.name} (${top.sharePct}%)`
+                        : `${top.name} concentra el ${top.sharePct}% en ${displayLabel}`
+                      : `Sin registros en ${displayLabel}`}
                 </h2>
                 <p>
-                  {breakdown.kind === "numeric"
-                    ? `${displayLabel} · ${breakdown.totalCategories} rangos`
-                    : `${displayLabel} · ${breakdown.totalCategories} categorías`}
+                  {isAge && topAgeHighlights.length > 0
+                    ? `${displayLabel} · ${topAgeHighlights
+                        .map((item) => `${item.name}: ${fmt(item.cases)} casos`)
+                        .join(" · ")}`
+                    : breakdown.kind === "numeric"
+                      ? `${displayLabel} · ${breakdown.totalCategories} rangos`
+                      : `${displayLabel} · ${breakdown.totalCategories} categorías`}
                 </p>
               </div>
               <span className="axis-tag">

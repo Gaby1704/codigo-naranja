@@ -210,6 +210,27 @@ def _is_technical_helper_col(header: str, mapping: dict[str, str]) -> bool:
     return False
 
 
+def _is_table_only_col(header: str) -> bool:
+    """Return True for high-cardinality identifier columns like EUV that belong in tables, never charts."""
+    tokens = normalize(header).replace("_", " ").split()
+    return "EUV" in tokens
+
+
+def detect_table_only_columns(rows: list[dict[str, Any]], mapping: dict[str, str]) -> list[str]:
+    if not rows:
+        return []
+    headers = list(rows[0].keys())
+    mapped_cols = {col for col in mapping.values() if col}
+    cols: list[str] = []
+    for header in headers:
+        if header in mapped_cols or _is_technical_helper_col(header, mapping):
+            continue
+        if _is_table_only_col(header):
+            if any(normalize(row.get(header)) not in _MISSING_TOKENS for row in rows):
+                cols.append(header)
+    return cols[:6]
+
+
 def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[str], list[str]]:
     """Detect extra categorical/temporal/status dimensions and numeric metrics from unmapped Excel columns."""
     if not rows:
@@ -220,7 +241,7 @@ def detect_extra_schema(rows: list[dict[str, Any]], mapping: dict[str, str]) -> 
     metric_candidates: list[tuple[int, int, str]] = []
 
     for index, header in enumerate(headers):
-        if header in mapped_cols or _is_technical_helper_col(header, mapping):
+        if header in mapped_cols or _is_technical_helper_col(header, mapping) or _is_table_only_col(header):
             continue
         raw_vals = [row.get(header) for row in rows]
         non_empty = [val for val in raw_vals if normalize(val) not in _MISSING_TOKENS]
@@ -268,6 +289,8 @@ def validate_processed_dataset(
         raise ValueError("El mapeo no es coherente: la columna de atenciones/capacidad debe ser numérica o quedar sin asignar.")
 
     extra_dims, extra_metrics = detect_extra_schema(rows, mapping)
+    table_cols = detect_table_only_columns(rows, mapping)
+    all_stored_dims = list(dict.fromkeys([*extra_dims, *table_cols]))
     has_cases_col = bool(mapping.get("cases"))
     has_capacity_col = bool(mapping.get("capacity"))
 
@@ -366,7 +389,7 @@ def validate_processed_dataset(
         complete = not is_period_incomplete(period, period_status)
 
         row_extra_dims: dict[str, str] = {}
-        for col in extra_dims:
+        for col in all_stored_dims:
             val_text = str(raw.get(col) or "").strip()
             norm_val = normalize(val_text)
             if norm_val in _MISSING_TOKENS:
@@ -429,6 +452,7 @@ def validate_processed_dataset(
         },
         "extraDimensions": extra_dims,
         "extraMetrics": extra_metrics,
+        "tableDimensions": table_cols,
     }
     return cleaned, audit, metadata
 

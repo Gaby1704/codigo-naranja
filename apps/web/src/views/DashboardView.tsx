@@ -94,7 +94,17 @@ export function DashboardView() {
     (item) => item.key.startsWith("extra:") || item.key.startsWith("metric:"),
   )
   const extraDimensions = data?.extraDimensions ?? []
+  const tableDimensions = data?.tableDimensions ?? []
   const recordRows = data?.recordRows ?? []
+  const primaryAgeBreakdown =
+    extraBreakdowns.find((b) => /\bedad\b/i.test(b.label) && !/edad[_ ]?1\b/i.test(b.label)) ??
+    extraBreakdowns.find((b) => /\bedad\b/i.test(b.label))
+  const topAgeRanges = primaryAgeBreakdown
+    ? [...primaryAgeBreakdown.items]
+        .filter((item) => !/no especificado/i.test(item.name))
+        .sort((a, b) => b.cases - a.cases)
+        .slice(0, 3)
+    : []
 
   return (
     <>
@@ -298,11 +308,23 @@ export function DashboardView() {
               </small>
             </div>
           ))}
+          {topAgeRanges.length > 0 && (
+            <div className="generality-chip">
+              <span className="gen-label">Rangos de edad principales</span>
+              <strong>{topAgeRanges.map((item) => `${item.name} (${item.sharePct}%)`).join(" · ")}</strong>
+              <small>{topAgeRanges.map((item) => `${item.name}: ${fmt(item.cases)} casos`).join(" · ")}</small>
+            </div>
+          )}
           {extraBreakdowns
-            .filter((bd) => bd.kind !== "numeric" && bd.items.length > 0)
+            .filter(
+              (bd) =>
+                bd.kind !== "numeric" &&
+                bd.items.length > 0 &&
+                bd.key !== primaryAgeBreakdown?.key,
+            )
             .slice(0, 4)
             .map((bd) => {
-              const top = bd.items[0]
+              const top = bd.items.find((item) => !/no especificado/i.test(item.name)) ?? bd.items[0]
               return (
                 <div className="generality-chip" key={`d-${bd.key}`}>
                   <span className="gen-label">{humanizeColumnLabel(bd.label)}</span>
@@ -403,6 +425,7 @@ export function DashboardView() {
             summaries={summaries}
             dynamicMetrics={dynamicMetrics}
             extraDimensions={extraDimensions}
+            tableDimensions={tableDimensions}
             recordRows={recordRows}
             totalRecords={totalRecords}
             hasPersonIds={hasPersonIds}

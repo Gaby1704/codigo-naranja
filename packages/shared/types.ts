@@ -49,6 +49,7 @@ export type Summary = {
   undatedCases?: number
   extraMetrics?: Record<string, SummaryExtraMetric>
   extraDimensions?: Record<string, string>
+  tableCounts?: Record<string, number>
   classification: Classification
 }
 
@@ -189,6 +190,7 @@ export type Dashboard = {
   priorityCount: number
   dimensionLabels: DimensionLabels
   extraDimensions: string[]
+  tableDimensions?: string[]
   dynamicBreakdowns: DynamicBreakdown[]
   dynamicMetrics: DynamicMetric[]
   recordRows: RecordRow[]

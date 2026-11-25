@@ -1,7 +1,7 @@
 import re
 
 from app.services.constants import load_constants
-from app.services.rules import _is_technical_helper_col, classify, is_period_incomplete, natural_key, normalize
+from app.services.rules import _is_table_only_col, _is_technical_helper_col, classify, is_period_incomplete, natural_key, normalize
 
 _YEAR_RE = re.compile(r"^\d{4}$")
 _ANY_YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
@@ -356,6 +356,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
     dim_labels = {**default_labels, **(meta.get("columnLabels") or {})}
     extra_dimensions: list[str] = list(meta.get("extraDimensions") or [])
     extra_metrics: list[str] = list(meta.get("extraMetrics") or [])
+    table_dimensions: list[str] = list(meta.get("tableDimensions") or [])
     if not extra_dimensions and records:
         seen_dims: list[str] = []
         for row in records[:50]:
@@ -370,8 +371,19 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 if key not in seen_metrics:
                     seen_metrics.append(key)
         extra_metrics = seen_metrics
-    extra_dimensions = [col for col in extra_dimensions if not _is_technical_helper_col(col, {})]
-    extra_metrics = [col for col in extra_metrics if not _is_technical_helper_col(col, {})]
+    for col in extra_dimensions:
+        if _is_table_only_col(col) and col not in table_dimensions:
+            table_dimensions.append(col)
+    for col in extra_metrics:
+        if _is_table_only_col(col) and col not in table_dimensions:
+            table_dimensions.append(col)
+    table_dimensions = [col for col in table_dimensions if not _is_technical_helper_col(col, {})]
+    extra_dimensions = [
+        col for col in extra_dimensions if not _is_technical_helper_col(col, {}) and not _is_table_only_col(col)
+    ]
+    extra_metrics = [
+        col for col in extra_metrics if not _is_technical_helper_col(col, {}) and not _is_table_only_col(col)
+    ]
 
     has_person_ids = any(bool(row.get("person_id")) for row in records)
     has_capacity_data = meta.get("hasCapacityData", True) and any(row["capacity"] is not None for row in records)
@@ -460,6 +472,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                 "violence": {},
                 "extra_metrics_vals": {},
                 "extra_dim_counts": {},
+                "table_unique_vals": {},
             },
         )
         year_part = parts[0] or (
@@ -478,6 +491,10 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             if val_text and val_text != labels["unspecified"] and val_text != "N/A":
                 col_counts = bucket["extra_dim_counts"].setdefault(col, {})
                 col_counts[val_text] = col_counts.get(val_text, 0) + 1
+        for col in table_dimensions:
+            val_text = str((row.get("extra_dims") or {}).get(col) or "").strip()
+            if val_text and val_text != labels["unspecified"] and val_text != "N/A":
+                bucket["table_unique_vals"].setdefault(col, set()).add(val_text)
         bucket["count"] += 1
         vtype = str(row.get("violence") or labels["unspecified"]).strip() or labels["unspecified"]
         vbucket = bucket["violence"].setdefault(vtype, {"name": vtype, "cases": 0.0, "records": 0})
@@ -609,6 +626,10 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
                     for counts in [bucket["extra_dim_counts"].get(col, {})]
                     if counts
                 },
+                "tableCounts": {
+                    col: len(bucket["table_unique_vals"].get(col, set()))
+                    for col in table_dimensions
+                },
                 "classification": classification,
             }
         )
@@ -662,7 +683,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
             "extraMetrics": dict(row.get("extra_metrics") or {}),
             "extraMetricStatuses": dict(row.get("extra_metric_statuses") or {}),
         }
-        for row in filtered[:300]
+        for row in filtered[:1000]
     ]
 
     return {
@@ -692,6 +713,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         "priorityCount": sum(1 for item in summaries if item["ratio"] >= rules["priorityRatio"]),
         "dimensionLabels": dim_labels,
         "extraDimensions": extra_dimensions,
+        "tableDimensions": table_dimensions,
         "dynamicBreakdowns": dynamic_breakdowns,
         "dynamicMetrics": dynamic_metrics,
         "recordRows": record_rows,

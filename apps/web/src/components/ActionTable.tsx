@@ -14,6 +14,7 @@ export function ActionTable({
   summaries,
   dynamicMetrics = [],
   extraDimensions = [],
+  tableDimensions = [],
   recordRows = [],
   totalRecords = 0,
   hasPersonIds,
@@ -27,6 +28,7 @@ export function ActionTable({
   summaries: Summary[]
   dynamicMetrics?: DynamicMetric[]
   extraDimensions?: string[]
+  tableDimensions?: string[]
   recordRows?: RecordRow[]
   totalRecords?: number
   hasPersonIds: boolean
@@ -39,6 +41,7 @@ export function ActionTable({
 }) {
   const [query, setQuery] = useState("")
   const [viewMode, setViewMode] = useState<"summary" | "records">("summary")
+  const [recordLimit, setRecordLimit] = useState(200)
 
   const summaryMetrics = useMemo(() => dynamicMetrics.slice(0, 3), [dynamicMetrics])
   const summaryDims = useMemo(() => extraDimensions.slice(0, 3), [extraDimensions])
@@ -64,6 +67,11 @@ export function ActionTable({
     })
   }, [recordRows, query])
 
+  const visibleRecordRows = useMemo(
+    () => filteredRecordRows.slice(0, recordLimit),
+    [filteredRecordRows, recordLimit],
+  )
+
   function exportCsv() {
     const isRecords = viewMode === "records"
     const headers = isRecords
@@ -73,6 +81,7 @@ export function ActionTable({
           dimensionLabels?.violence ?? "Tipo de violencia",
           dimensionLabels?.service ?? "Servicio",
           ...(hasPersonIds ? ["Expediente"] : []),
+          ...tableDimensions.map((col) => humanizeColumnLabel(col)),
           "Casos",
           ...(hasCapacityData ? ["Atenciones"] : []),
           ...extraDimensions.map((dim) => humanizeColumnLabel(dim)),
@@ -83,6 +92,7 @@ export function ActionTable({
           ...(hasResidenceDistinction ? ["Casos por residencia"] : []),
           "Casos registrados",
           ...(hasPersonIds ? ["Personas únicas"] : []),
+          ...tableDimensions.map((col) => `${humanizeColumnLabel(col)} únicos`),
           "Promedio casos por registro",
           ...summaryMetrics.map((m) => `Prom. ${humanizeColumnLabel(m.label)}`),
           ...summaryDims.map((dim) => `${humanizeColumnLabel(dim)} (frecuente)`),
@@ -98,6 +108,7 @@ export function ActionTable({
             row.violence,
             row.service,
             ...(hasPersonIds ? [row.personId || "Sin dato"] : []),
+            ...tableDimensions.map((col) => row.extraDims[col] || "Sin dato"),
             fmtDynamicCell(row.cases, row.casesStatus),
             ...(hasCapacityData ? [fmtDynamicCell(row.capacity, row.capacityStatus)] : []),
             ...extraDimensions.map((dim) => row.extraDims[dim] || "Sin dato"),
@@ -111,6 +122,7 @@ export function ActionTable({
             ...(hasResidenceDistinction ? [row.residenceCases] : []),
             row.casesValidCount > 0 ? row.cases : row.casesNaCount > 0 ? "N/A" : "Sin dato",
             ...(hasPersonIds ? [row.uniquePeople] : []),
+            ...tableDimensions.map((col) => row.tableCounts?.[col] ?? 0),
             row.avgCasesPerRecord !== null ? row.avgCasesPerRecord : "N/A",
             ...summaryMetrics.map((m) => {
               const stat = row.extraMetrics?.[m.key]
@@ -189,6 +201,9 @@ export function ActionTable({
                 <th>MUNICIPIO</th>
                 <th>CASOS</th>
                 {hasPersonIds && <th>PERSONAS ÚNICAS</th>}
+                {tableDimensions.map((col) => (
+                  <th key={`th-${col}`}>{humanizeColumnLabel(col).toUpperCase()} ÚNICOS</th>
+                ))}
                 {hasResidenceDistinction && <th>RESIDENCIA</th>}
                 {hasCapacityData && <th>ATENCIONES</th>}
                 <th>PROM. CASOS</th>
@@ -218,6 +233,9 @@ export function ActionTable({
                   </td>
                   <td>{fmtMetric(row.cases, row.casesValidCount, row.casesNaCount, row.casesMissingCount)}</td>
                   {hasPersonIds && <td>{fmt(row.uniquePeople)}</td>}
+                  {tableDimensions.map((col) => (
+                    <td key={`tc-${col}`}>{fmt(row.tableCounts?.[col] ?? 0)}</td>
+                  ))}
                   {hasResidenceDistinction && <td>{fmt(row.residenceCases)}</td>}
                   {hasCapacityData && (
                     <td>{fmtMetric(row.capacity, row.capacityValidCount, row.capacityNaCount, row.capacityMissingCount)}</td>
@@ -256,6 +274,9 @@ export function ActionTable({
                 <th>{(dimensionLabels?.violence ?? "Tipo de violencia").toUpperCase()}</th>
                 <th>{(dimensionLabels?.service ?? "Servicio").toUpperCase()}</th>
                 {hasPersonIds && <th>EXPEDIENTE</th>}
+                {tableDimensions.map((col) => (
+                  <th key={`rt-${col}`}>{humanizeColumnLabel(col).toUpperCase()}</th>
+                ))}
                 <th>CASOS</th>
                 {hasCapacityData && <th>ATENCIONES</th>}
                 {extraDimensions.map((dim) => (
@@ -267,7 +288,7 @@ export function ActionTable({
               </tr>
             </thead>
             <tbody>
-              {filteredRecordRows.map((row, idx) => (
+              {visibleRecordRows.map((row, idx) => (
                 <tr key={`${row.personId || "r"}-${row.period}-${row.zone}-${idx}`} onClick={() => onSelect(row.zone)}>
                   <td>{row.period}</td>
                   <td>
@@ -279,6 +300,9 @@ export function ActionTable({
                   <td>{row.violence}</td>
                   <td>{row.service}</td>
                   {hasPersonIds && <td>{row.personId || "Sin dato"}</td>}
+                  {tableDimensions.map((col) => (
+                    <td key={`rv-${col}`}>{row.extraDims[col] || "Sin dato"}</td>
+                  ))}
                   <td>{fmtDynamicCell(row.cases, row.casesStatus)}</td>
                   {hasCapacityData && <td>{fmtDynamicCell(row.capacity, row.capacityStatus)}</td>}
                   {extraDimensions.map((dim) => (
@@ -301,7 +325,19 @@ export function ActionTable({
             </>
           ) : (
             <>
-              Mostrando <b>{filteredRecordRows.length}</b> de <b>{totalRecords || recordRows.length}</b> registros filtrados
+              Mostrando <b>{visibleRecordRows.length}</b> de <b>{totalRecords || recordRows.length}</b> registros filtrados
+              {filteredRecordRows.length > visibleRecordRows.length && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="link-inline"
+                    onClick={() => setRecordLimit((prev) => prev + 200)}
+                  >
+                    Mostrar más
+                  </button>
+                </>
+              )}
             </>
           )}
         </span>

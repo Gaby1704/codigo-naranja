@@ -255,3 +255,42 @@ def test_dynamic_columns_like_edad_feed_charts_generalities_and_listings() -> No
     assert "extra:EDAD_OUTLIER" not in legacy_keys
     for bd in legacy_board["dynamicBreakdowns"]:
         assert all(item["name"].upper() not in {"FALSE", "FALSO"} for item in bd["items"])
+
+
+def test_euv_column_with_many_values_is_excluded_from_charts_and_kept_in_tables() -> None:
+    from app.services.rules import detect_extra_schema, detect_table_only_columns, validate_processed_dataset
+
+    rows = [
+        {
+            "FOLIO": f"F-{idx}",
+            "EUV": f"EUV-{1000 + idx}",
+            "MUNICIPIO": "Apizaco" if idx % 2 == 0 else "Tlaxcala",
+            "FECHA_DE_REGISTRO": "2025-05-01",
+            "TIPO_DE_VIOLENCIA": "PSICOLOGICA",
+            "SERVICIO_RECIBIDO_ATENCION": "ATENCION PSICOLOGICA",
+            "EDAD": str(20 + (idx % 45)),
+        }
+        for idx in range(60)
+    ]
+    mapping = suggest_mapping(list(rows[0].keys()), rows)
+    assert mapping["person"] == "FOLIO"
+    extra_dims, extra_metrics = detect_extra_schema(rows, mapping)
+    table_cols = detect_table_only_columns(rows, mapping)
+    assert "EUV" not in extra_dims
+    assert "EUV" not in extra_metrics
+    assert table_cols == ["EUV"]
+
+    cleaned, audit, meta = validate_processed_dataset(rows, mapping)
+    board = build_dashboard(
+        cleaned,
+        {"period": "Todos los periodos", "municipality": "Todas las zonas", "violence": "Todos los tipos", "service": "Todos los servicios"},
+        {"fileName": "euv.xlsx", "synthetic": False, "audit": audit},
+        meta,
+    )
+    assert board["tableDimensions"] == ["EUV"]
+    assert all("EUV" not in bd["label"] for bd in board["dynamicBreakdowns"])
+    assert all("EUV" not in m["label"] for m in board["dynamicMetrics"])
+    by_mun = {item["name"]: item for item in board["summaries"]}
+    assert by_mun["Apizaco"]["tableCounts"]["EUV"] == 30
+    assert by_mun["Tlaxcala"]["tableCounts"]["EUV"] == 30
+    assert board["recordRows"][0]["extraDims"]["EUV"] == "EUV-1000"

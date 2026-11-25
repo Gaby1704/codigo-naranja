@@ -67,6 +67,7 @@ class Summary(BaseModel):
     undatedCases: float = 0.0
     extraMetrics: dict[str, SummaryExtraMetric] = {}
     extraDimensions: dict[str, str] = {}
+    tableCounts: dict[str, int] = {}
     classification: Classification
 
 
@@ -207,6 +208,7 @@ class DashboardResponse(BaseModel):
     priorityCount: int
     dimensionLabels: DimensionLabels
     extraDimensions: list[str] = []
+    tableDimensions: list[str] = []
     dynamicBreakdowns: list[DynamicBreakdown]
     dynamicMetrics: list[DynamicMetric]
     recordRows: list[RecordRow] = []
