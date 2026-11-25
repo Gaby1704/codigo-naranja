@@ -17,6 +17,8 @@ HEADERS = {"X-Codigo-Naranja": "1"}
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "")
+    monkeypatch.setenv("DATABASE_DIRECT_URL", "")
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "tablero.sqlite"))
     monkeypatch.setenv("ADMIN_EMAIL", EMAIL)
     monkeypatch.setenv("ADMIN_PASSWORD", PASSWORD)
@@ -101,11 +103,15 @@ def test_health_and_public_dashboard(client: TestClient) -> None:
     board = client.get("/api/dashboard", params={"period": "2026"})
     assert board.status_code == 200
     body = board.json()
-    assert body["source"]["synthetic"] is True
-    assert len(body["summaries"]) == 20
-    assert body["totalCases"] > 0
-    assert body["forecast"]["available"] is True
-    assert len(body["forecast"]["points"]) == 5
+    assert body["hasData"] is False
+    assert body["source"]["synthetic"] is False
+    assert body["source"]["fileName"] is None
+    assert body["summaries"] == []
+    assert body["trends"] == []
+    assert body["totalRecords"] == 0
+    assert body["totalCases"] == 0
+    assert body["forecast"]["available"] is False
+    assert body["forecast"]["points"] == []
 
 
 def test_login_upload_and_dynamic_validation(client: TestClient) -> None:

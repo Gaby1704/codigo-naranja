@@ -10,7 +10,6 @@ from app.config import get_settings, validate_runtime_settings
 from app.db import init_db
 from app.routers import auth, dashboard, datasets
 from app.services.accounts import seed_admin
-from app.services.catalog import ensure_demo
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -30,7 +29,6 @@ async def lifespan(_app: FastAPI):
     )
     init_db()
     seed_admin()
-    ensure_demo()
     yield
 
 

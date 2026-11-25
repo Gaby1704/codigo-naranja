@@ -178,6 +178,7 @@ export type Dashboard = {
   totalCapacity: number
   totalPeople: number
   totalRecords: number
+  hasData?: boolean
   hasPersonIds: boolean
   hasCapacityData: boolean
   hasResidenceDistinction: boolean

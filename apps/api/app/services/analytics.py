@@ -54,15 +54,16 @@ def _build_forecast(all_trends: list[dict], summaries: list[dict]) -> dict:
     watch_zones = [item["name"] for item in summaries if item["classification"]["color"] == "watch"][:3]
 
     proposals = []
-    if priority_zones:
-        proposals.append(f"Reforzar la capacidad presencial en {', '.join(priority_zones)}.")
-    else:
-        proposals.append("Monitorear la capacidad instalada por municipio.")
-    if watch_zones:
-        proposals.append(f"Fortalecer la detección temprana en {', '.join(watch_zones)} ante posible subregistro.")
-    else:
-        proposals.append("Mantener la vinculación institucional en zonas periféricas.")
-    proposals.append("Estandarizar el seguimiento por expediente único.")
+    if all_trends or summaries:
+        if priority_zones:
+            proposals.append(f"Reforzar la capacidad presencial en {', '.join(priority_zones)}.")
+        else:
+            proposals.append("Monitorear la capacidad instalada por municipio.")
+        if watch_zones:
+            proposals.append(f"Fortalecer la detección temprana en {', '.join(watch_zones)} ante posible subregistro.")
+        else:
+            proposals.append("Mantener la vinculación institucional en zonas periféricas.")
+        proposals.append("Estandarizar el seguimiento por expediente único.")
 
     if len(complete) < 2:
         return {
@@ -701,6 +702,7 @@ def build_dashboard(records: list[dict], filters: dict[str, str], source: dict, 
         "totalCapacity": sum(float(row["capacity"]) for row in filtered if row["capacity"] is not None),
         "totalPeople": len(all_people),
         "totalRecords": len(filtered),
+        "hasData": len(records) > 0,
         "hasPersonIds": has_person_ids,
         "hasCapacityData": has_capacity_data,
         "hasResidenceDistinction": has_residence_distinction,

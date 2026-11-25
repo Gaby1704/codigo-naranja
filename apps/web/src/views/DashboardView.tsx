@@ -1,11 +1,13 @@
-import { AlertTriangle, BarChart3, Filter, Gauge, HeartHandshake, Map, MapPin, RefreshCw, Table2, Users } from "lucide-react"
+import { AlertTriangle, BarChart3, Database, Filter, Gauge, HeartHandshake, Map, MapPin, RefreshCw, Table2, Upload, Users } from "lucide-react"
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ActionTable } from "../components/ActionTable"
 import { Charts, GeneralComparisonCard } from "../components/Charts"
 import { MapPanel } from "../components/MapPanel"
 import { SearchableSelect, type SelectOption } from "../components/SearchableSelect"
 import { fmt, humanizeColumnLabel } from "../lib/format"
 import { filters as labels } from "../lib/shared"
+import { useAuth } from "../state/auth"
 import { useBoard } from "../state/board"
 
 const MONTH_NAMES: Record<string, string> = {
@@ -25,8 +27,11 @@ const MONTH_NAMES: Record<string, string> = {
 
 export function DashboardView() {
   const { filters, setFilters, data, loading, error } = useBoard()
+  const { user, ready } = useAuth()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<"overview" | "charts" | "table">("overview")
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const isAdmin = ready && user?.role === "admin"
 
   const summaries = data?.summaries ?? []
   const totalCases = data?.totalCases ?? 0
@@ -105,6 +110,39 @@ export function DashboardView() {
         .sort((a, b) => b.cases - a.cases)
         .slice(0, 3)
     : []
+
+  const hasDataInDb = Boolean(data?.hasData || (data && data.totalRecords > 0) || data?.source.fileName)
+
+  if (loading && !data) {
+    return <div className="notice">Cargando tablero…</div>
+  }
+
+  if (error && !data) {
+    return (
+      <div className="notice" role="alert">
+        {error}
+      </div>
+    )
+  }
+
+  if (data && !hasDataInDb) {
+    return (
+      <section className="panel empty-db-panel" role="status">
+        <span className="empty-db-icon">
+          <Database size={22} />
+        </span>
+        <h2>Sin información en la base de datos</h2>
+        <p>
+          No existen registros cargados actualmente en el sistema. Cuando se cargue un archivo Excel válido, aquí se mostrarán los indicadores, el mapa municipal, las gráficas y los listados.
+        </p>
+        {isAdmin && (
+          <button type="button" className="button primary" onClick={() => navigate("/admin")}>
+            <Upload size={15} /> Ir a Cargar datos
+          </button>
+        )}
+      </section>
+    )
+  }
 
   return (
     <>

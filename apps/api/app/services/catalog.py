@@ -42,10 +42,10 @@ def ensure_demo() -> None:
 def load_active() -> tuple[list[dict], dict, dict | None]:
     with db() as conn:
         dataset = conn.execute(
-            "SELECT id, name, synthetic, audit_json, metadata_json FROM datasets WHERE active = 1 ORDER BY created_at DESC LIMIT 1"
+            "SELECT id, name, synthetic, audit_json, metadata_json FROM datasets WHERE active = 1 AND synthetic = 0 ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         if dataset is None:
-            return [], {"fileName": None, "synthetic": True, "audit": None}, None
+            return [], {"fileName": None, "synthetic": False, "audit": None}, None
         rows = conn.execute(
             """
             SELECT zone, residence_zone, period, event_date, period_complete,

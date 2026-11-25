@@ -196,6 +196,7 @@ class DashboardResponse(BaseModel):
     totalCapacity: float
     totalPeople: int
     totalRecords: int
+    hasData: bool = False
     hasPersonIds: bool
     hasCapacityData: bool
     hasResidenceDistinction: bool

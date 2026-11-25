@@ -14,6 +14,7 @@ export function Shell() {
   const closeLogin = useCallback(() => setLoginOpen(false), [])
   const audit = data?.source.audit
   const isAdmin = ready && user?.role === "admin"
+  const hasData = Boolean(data?.hasData || (data && data.totalRecords > 0) || data?.source.fileName)
 
   async function signOut() {
     await logout()
@@ -71,9 +72,11 @@ export function Shell() {
           <div>
             <b>Calidad y cobertura de datos</b>
             <p>
-              {audit
-                ? `${audit.valid} registros válidos de ${audit.processed} (${audit.removed} descartados). ${audit.uniquePeople} personas únicas (${audit.multiCasePeople} con múltiples seguimientos). Ceros: ${audit.zeroValues} · N/A: ${audit.notApplicable} · Faltantes: ${audit.missingValues}.`
-                : "Los datos reflejan registros institucionales; mayor volumen indica cercanía o cobertura, no mayor incidencia poblacional."}
+              {!hasData
+                ? "Sin información cargada en la base de datos."
+                : audit
+                  ? `${audit.valid} registros válidos de ${audit.processed} (${audit.removed} descartados). ${audit.uniquePeople} personas únicas (${audit.multiCasePeople} con múltiples seguimientos). Ceros: ${audit.zeroValues} · N/A: ${audit.notApplicable} · Faltantes: ${audit.missingValues}.`
+                  : "Los datos reflejan registros institucionales; mayor volumen indica cercanía o cobertura, no mayor incidencia poblacional."}
             </p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={() => setQualityOpen(false)}>
@@ -91,14 +94,16 @@ export function Shell() {
           </NavLink>
         )}
         <span className="tabs-spacer" />
-        <span className="period-chip">
-          <CalendarDays size={13} />
-          {(() => {
-            const yr = filters.year || data?.appliedYear || "Todos"
-            const parts = [yr !== "Todos" ? yr : "", filters.month !== "Todos" ? `M${filters.month}` : "", filters.day !== "Todos" ? `D${filters.day}` : ""].filter(Boolean)
-            return parts.length > 0 ? `Corte ${parts.join("-")}` : "Todos los periodos"
-          })()}
-        </span>
+        {hasData && (
+          <span className="period-chip">
+            <CalendarDays size={13} />
+            {(() => {
+              const yr = filters.year || data?.appliedYear || "Todos"
+              const parts = [yr !== "Todos" ? yr : "", filters.month !== "Todos" ? `M${filters.month}` : "", filters.day !== "Todos" ? `D${filters.day}` : ""].filter(Boolean)
+              return parts.length > 0 ? `Corte ${parts.join("-")}` : "Todos los periodos"
+            })()}
+          </span>
+        )}
       </nav>
       <Outlet />
       {loginOpen && <LoginDialog onClose={closeLogin} />}

@@ -501,6 +501,37 @@ button { cursor: pointer; }
 .footer-brand { color: #473a44; font-size: 8.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
 .footer-brand i { font-style: normal; color: #c45d31; }
 
+.empty-db-panel {
+  margin-top: 14px;
+  padding: 42px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+.empty-db-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #a93f26;
+  background: #f8ebe4;
+}
+.empty-db-panel h2 {
+  margin: 4px 0 0;
+  font-size: 16px;
+  color: #1f1921;
+}
+.empty-db-panel p {
+  margin: 0;
+  max-width: 520px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #4a414d;
+}
+
 .admin-layout { max-width: 990px; width: 100%; margin: 16px auto; flex: 1; padding-bottom: 20px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 14px; }
 .section-heading h2 { font-size: 19px; margin-top: 5px; }
