@@ -1,39 +1,48 @@
-import { ArrowDownToLine, Check, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react"
+import { ArrowDownToLine, ArrowUpRight, Check, FileSpreadsheet, ShieldCheck, Upload } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import type { ColumnMapping, UploadPreview } from "../../../../packages/shared/types"
+import type { Audit, ColumnMapping, UploadPreview } from "../../../../packages/shared/types"
 import { applyDataset, changeSheet, downloadTemplate, uploadDataset } from "../api"
 import { allFilters } from "../lib/shared"
 import { useBoard } from "../state/board"
 
-const FIELDS: Array<[keyof ColumnMapping, string]> = [
-  ["zone", "Zona / municipio"],
-  ["period", "Periodo / año / mes"],
+const REQUIRED_FIELDS: Array<[keyof ColumnMapping, string]> = [
+  ["zone", "Municipio del hecho (ocurrencia)"],
+  ["period", "Periodo de registro / corte"],
   ["violence", "Tipo de violencia"],
   ["service", "Tipo de servicio"],
   ["cases", "Casos registrados"],
   ["capacity", "Servicios / atenciones registradas"],
 ]
 
+const OPTIONAL_FIELDS: Array<[keyof ColumnMapping, string, string]> = [
+  ["person", "Expediente / ID persona única", "Sin columna de expediente"],
+  ["residenceZone", "Municipio de residencia / pertenencia", "Igual al municipio del hecho / no incluido"],
+  ["eventDate", "Fecha o periodo del hecho", "No incluido"],
+  ["periodStatus", "Estado del periodo (completo / parcial)", "Todos los periodos completos"],
+]
+
 export function AdminView() {
   const navigate = useNavigate()
-  const { setFilters } = useBoard()
+  const { setFilters, reload } = useBoard()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState("")
   const [preview, setPreview] = useState<UploadPreview | null>(null)
   const [mapping, setMapping] = useState<ColumnMapping | null>(null)
+  const [appliedResult, setAppliedResult] = useState<{ fileName: string; audit: Audit } | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function loadFile(file?: File) {
     if (!file) return
     const lower = file.name.toLowerCase()
     if (!lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
-      setNotice("Selecciona un archivo Excel .xlsx o .xls.")
+      setNotice("Selecciona un archivo Excel .xlsx o .xls ya procesado.")
       return
     }
     setBusy(true)
     setNotice("")
+    setAppliedResult(null)
     try {
       const next = await uploadDataset(file)
       setPreview(next)
@@ -62,18 +71,17 @@ export function AdminView() {
 
   async function apply() {
     if (!preview || !mapping) return
-    if (!mapping.person) {
-      setNotice("Para garantizar una alerta por persona, asigna la columna de identificador de persona o expediente antes de aplicar el archivo.")
-      return
-    }
     setBusy(true)
     setNotice("")
     try {
-      await applyDataset(preview.uploadId, preview.sheet, mapping)
+      const result = await applyDataset(preview.uploadId, preview.sheet, mapping)
+      setAppliedResult(result)
+      setPreview(null)
       setFilters({ ...allFilters })
-      navigate("/")
+      reload()
     } catch (reason) {
       setNotice(reason instanceof Error ? reason.message : "No se pudieron aplicar los datos.")
+    } finally {
       setBusy(false)
     }
   }
@@ -85,8 +93,11 @@ export function AdminView() {
           <span className="eyebrow">
             CENTRO DE DATOS <span className="eyebrow-slash">/</span> 02
           </span>
-          <h2>Administración de registros</h2>
-          <p>Importa y prepara archivos para actualizar el tablero territorial.</p>
+          <h2>Carga de archivos procesados</h2>
+          <p>
+            La depuración pesada se realiza en el limpiador externo. Este módulo valida columnas, esquema y coherencia de registros
+            distinguiendo expediente único, casos, servicios, ceros, N/A y faltantes.
+          </p>
         </div>
         <button
           type="button"
@@ -116,8 +127,8 @@ export function AdminView() {
         <span className="upload-symbol">
           <Upload size={23} />
         </span>
-        <h3>Arrastra tu archivo Excel aquí</h3>
-        <p>Registro de casos y/o registro de servicios · Formato .xlsx o .xls</p>
+        <h3>Arrastra tu archivo Excel ya procesado aquí</h3>
+        <p>Esquema validado de casos y servicios · Formato .xlsx o .xls</p>
         <button type="button" className="button primary" onClick={() => inputRef.current?.click()} disabled={busy}>
           <FileSpreadsheet size={16} /> Seleccionar archivo
         </button>
@@ -128,11 +139,53 @@ export function AdminView() {
           className="sr-only"
           onChange={(event) => void loadFile(event.target.files?.[0])}
         />
-        <small>El archivo se valida y limpia en el servidor. No queda una copia fuera del dataset activo.</small>
+        <small>Se conservan los ceros reales, se respetan N/A sin convertirlos a 0 y se contabilizan los datos faltantes.</small>
       </div>
       {notice && (
         <div className="notice" role="status">
           {notice}
+        </div>
+      )}
+      {appliedResult && (
+        <div className="admin-card audit-result" role="status">
+          <div className="admin-card-title">
+            <div>
+              <span className="eyebrow">
+                VALIDACIÓN COMPLETADA <span className="eyebrow-slash">/</span> AUDITORÍA
+              </span>
+              <h3>Archivo aplicado: {appliedResult.fileName}</h3>
+              <p>Resumen de coherencia, conteo de expedientes únicos y tratamiento de ceros, N/A y faltantes.</p>
+            </div>
+            <button type="button" className="button primary" onClick={() => navigate("/")}>
+              Ir al tablero <ArrowUpRight size={15} />
+            </button>
+          </div>
+          <div className="audit-metrics-grid">
+            <div>
+              <span>REGISTROS VÁLIDOS</span>
+              <strong>
+                {appliedResult.audit.valid} / {appliedResult.audit.processed}
+              </strong>
+              <small>{appliedResult.audit.removed} descartados (vacíos, duplicados exactos o incoherentes)</small>
+            </div>
+            <div>
+              <span>EXPEDIENTES / PERSONAS ÚNICAS</span>
+              <strong>{appliedResult.audit.uniquePeople}</strong>
+              <small>{appliedResult.audit.multiCasePeople} con múltiples casos o seguimientos conservados</small>
+            </div>
+            <div>
+              <span>CEROS CONSERVADOS</span>
+              <strong>{appliedResult.audit.zeroValues}</strong>
+              <small>Valores numéricos iguales a 0 preservados</small>
+            </div>
+            <div>
+              <span>N/A Y FALTANTES</span>
+              <strong>
+                {appliedResult.audit.notApplicable} N/A · {appliedResult.audit.missingValues} faltantes
+              </strong>
+              <small>Excluidos de promedios y nunca convertidos en 0</small>
+            </div>
+          </div>
         </div>
       )}
       {preview && mapping && (
@@ -140,9 +193,9 @@ export function AdminView() {
           <div className="admin-card-title">
             <div>
               <span className="eyebrow">
-                CONFIGURACIÓN <span className="eyebrow-slash">/</span> 01
+                VALIDACIÓN DE ESQUEMA <span className="eyebrow-slash">/</span> 01
               </span>
-              <h3>Revisa y asigna tus columnas</h3>
+              <h3>Verifica la asignación de columnas</h3>
               <p>
                 Libro: <strong>{preview.name}</strong> · {preview.rowCount} filas detectadas
               </p>
@@ -160,7 +213,7 @@ export function AdminView() {
             </select>
           </label>
           <div className="mapping-grid">
-            {FIELDS.map(([key, label]) => (
+            {REQUIRED_FIELDS.map(([key, label]) => (
               <label className="field-label" key={key}>
                 {label}
                 <select value={mapping[key]} onChange={(event) => setMapping({ ...mapping, [key]: event.target.value })}>
@@ -172,17 +225,19 @@ export function AdminView() {
                 </select>
               </label>
             ))}
-            <label className="field-label">
-              Identificador de persona / expediente (requerido para deduplicar)
-              <select value={mapping.person} onChange={(event) => setMapping({ ...mapping, person: event.target.value })}>
-                <option value="">Sin columna de identificador</option>
-                {preview.headers.map((header) => (
-                  <option key={header} value={header}>
-                    {header}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {OPTIONAL_FIELDS.map(([key, label, emptyLabel]) => (
+              <label className="field-label" key={key}>
+                {label}
+                <select value={mapping[key]} onChange={(event) => setMapping({ ...mapping, [key]: event.target.value })}>
+                  <option value="">{emptyLabel}</option>
+                  {preview.headers.map((header) => (
+                    <option key={header} value={header}>
+                      {header}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
           </div>
           <div className="preview-table">
             <table>
@@ -206,10 +261,10 @@ export function AdminView() {
           </div>
           <div className="admin-actions">
             <span>
-              <ShieldCheck size={15} /> Limpieza automática · alerta única por identificador de persona · duplicados consolidados
+              <ShieldCheck size={15} /> Validación de esquema y coherencia · Un expediente puede tener múltiples casos/seguimientos sin duplicar persona
             </span>
             <button type="button" className="button primary" onClick={() => void apply()} disabled={busy}>
-              <Check size={16} /> Aplicar al tablero
+              <Check size={16} /> Validar y aplicar al tablero
             </button>
           </div>
         </div>

@@ -3,7 +3,7 @@ import type { GeoPermissibleObjects } from "d3-geo"
 import { CircleHelp, MapPin } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { Summary } from "../../../../packages/shared/types"
-import { fmt, gap } from "../lib/format"
+import { fmt, fmtMetric, gap } from "../lib/format"
 import { zones } from "../lib/shared"
 
 function IconButton({ children, title }: { children: React.ReactNode; title: string }) {
@@ -17,10 +17,14 @@ function IconButton({ children, title }: { children: React.ReactNode; title: str
 export function MapPanel({
   summaries,
   selected,
+  hasPersonIds,
+  hasResidenceDistinction,
   onSelect,
 }: {
   summaries: Summary[]
   selected: string
+  hasPersonIds: boolean
+  hasResidenceDistinction: boolean
   onSelect: (name: string) => void
 }) {
   const selectedSummary = summaries.find((item) => item.name === selected) ?? summaries[0]
@@ -33,46 +37,52 @@ export function MapPanel({
           <span className="eyebrow">
             LECTURA TERRITORIAL <span className="eyebrow-slash">/</span> 01
           </span>
-          <h2>Prioridad por municipio</h2>
-          <p>Relación de casos registrados frente a capacidad de atención</p>
+          <h2>Cobertura institucional por municipio del hecho</h2>
+          <p>Mayor volumen refleja cercanía o capacidad de registro, no mayor violencia poblacional.</p>
         </div>
-        <IconButton title="Información del mapa">
+        <IconButton title="Criterio territorial BANAVIM: distingue ocurrencia vs. residencia y cobertura institucional">
           <CircleHelp size={16} />
         </IconButton>
       </div>
       <div className="map-stage">
         <div className="map-backdrop" />
         <div className="map-grid-lines" />
-        <TerritoryOutline />
         <span className="map-caption">
-          TLAXCALA <i>·</i> VISTA ESQUEMÁTICA
+          TLAXCALA <i>·</i> MUNICIPIO DEL HECHO
         </span>
-        {zones.map((zone) => {
-          const item = summaries.find((row) => row.name === zone.name)
-          return (
-            <button
-              type="button"
-              key={zone.name}
-              aria-label={`${zone.name}: ${item?.cases ?? 0} casos`}
-              title={`${zone.name} · ${fmt(item?.cases ?? 0)} casos · ${gap(item?.ratio ?? 0)} de brecha relativa`}
-              className={`map-node ${colorOf(zone.name)} ${selected === zone.name ? "selected" : ""}`}
-              style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
-              onClick={() => onSelect(zone.name)}
-            >
-              <span className="node-dot" />
-              <span className="node-label">{zone.name}</span>
-            </button>
-          )
-        })}
         <div className="map-north">
           N<br />
           <span>↑</span>
+        </div>
+        <div className="map-canvas">
+          <TerritoryOutline />
+          {zones.map((zone) => {
+            const item = summaries.find((row) => row.name === zone.name)
+            const pos = zone.labelPos ?? "right"
+            const casesLabel = item
+              ? fmtMetric(item.cases, item.casesValidCount, item.casesNaCount, item.casesMissingCount)
+              : "0"
+            return (
+              <button
+                type="button"
+                key={zone.name}
+                aria-label={`${zone.name}: ${casesLabel} casos`}
+                title={`${zone.name} · ${casesLabel} casos · ${gap(item?.ratio ?? 0)} de brecha relativa`}
+                className={`map-node pos-${pos} ${colorOf(zone.name)} ${selected === zone.name ? "selected" : ""}`}
+                style={{ left: `${zone.x}%`, top: `${zone.y}%` }}
+                onClick={() => onSelect(zone.name)}
+              >
+                <span className="node-dot" />
+                <span className="node-label">{zone.name}</span>
+              </button>
+            )
+          })}
         </div>
         <div className="map-scale">
           <i />
           <i />
           <i />
-          <span>Representación esquemática · no a escala</span>
+          <span>Esquemático · no a escala</span>
         </div>
       </div>
       <div className="map-legend">
@@ -95,19 +105,45 @@ export function MapPanel({
             <MapPin size={16} />
           </div>
           <div className="detail-location">
-            <span>MUNICIPIO SELECCIONADO</span>
+            <span>MUNICIPIO (HECHO)</span>
             <strong>{selectedSummary.name}</strong>
           </div>
           <div className="detail-stat">
             <span>CASOS</span>
-            <b>{fmt(selectedSummary.cases)}</b>
+            <b>
+              {fmtMetric(
+                selectedSummary.cases,
+                selectedSummary.casesValidCount,
+                selectedSummary.casesNaCount,
+                selectedSummary.casesMissingCount,
+              )}
+            </b>
           </div>
           <div className="detail-stat">
-            <span>CAPACIDAD</span>
-            <b>{fmt(selectedSummary.capacity)}</b>
+            <span>ATENCIONES</span>
+            <b>
+              {fmtMetric(
+                selectedSummary.capacity,
+                selectedSummary.capacityValidCount,
+                selectedSummary.capacityNaCount,
+                selectedSummary.capacityMissingCount,
+              )}
+            </b>
           </div>
+          {hasPersonIds && (
+            <div className="detail-stat">
+              <span>EXPEDIENTES</span>
+              <b>{fmt(selectedSummary.uniquePeople)}</b>
+            </div>
+          )}
+          {hasResidenceDistinction && (
+            <div className="detail-stat">
+              <span>RESIDENCIA</span>
+              <b>{fmt(selectedSummary.residenceCases)}</b>
+            </div>
+          )}
           <div className="detail-stat">
-            <span>BRECHA ESTIMADA</span>
+            <span>BRECHA</span>
             <b className={selectedSummary.ratio >= 1.3 ? "text-priority" : ""}>{gap(selectedSummary.ratio)}</b>
           </div>
           <div className="detail-recommendation">
@@ -147,8 +183,14 @@ function TerritoryOutline() {
   }, [collection])
 
   return (
-    <svg className="territory-map" viewBox="0 0 800 370" role="img" aria-label="Contorno territorial del estado de Tlaxcala">
-      <path d={outline} fill="#f5ddd4" stroke="#bb684c" strokeWidth={1.7} />
+    <svg
+      className="territory-map"
+      viewBox="0 0 800 370"
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Contorno territorial del estado de Tlaxcala"
+    >
+      <path d={outline} fill="#f3d6cb" stroke="#9e472f" strokeWidth={2} />
     </svg>
   )
 }

@@ -24,8 +24,11 @@ def ensure_demo() -> None:
         )
         conn.executemany(
             """
-            INSERT INTO records (dataset_id, zone, period, violence, service, cases, capacity)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO records (
+              dataset_id, zone, residence_zone, period, event_date, period_complete,
+              violence, service, cases, capacity, cases_status, capacity_status, person_id
+            )
+            VALUES (?, ?, '', ?, '', 1, ?, ?, ?, ?, 'value', 'value', '')
             """,
             [
                 (dataset_id, row["zone"], row["period"], row["violence"], row["service"], row["cases"], row["capacity"])
@@ -44,7 +47,8 @@ def load_active() -> tuple[list[dict], dict]:
             return [], {"fileName": None, "synthetic": True, "audit": None}
         rows = conn.execute(
             """
-            SELECT zone, period, violence, service, cases, capacity
+            SELECT zone, residence_zone, period, event_date, period_complete,
+                   violence, service, cases, capacity, cases_status, capacity_status, person_id
             FROM records WHERE dataset_id = ?
             """,
             (dataset["id"],),
@@ -68,11 +72,28 @@ def replace_active(name: str, records: list[dict], audit: dict) -> None:
         )
         conn.executemany(
             """
-            INSERT INTO records (dataset_id, zone, period, violence, service, cases, capacity)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO records (
+              dataset_id, zone, residence_zone, period, event_date, period_complete,
+              violence, service, cases, capacity, cases_status, capacity_status, person_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                (dataset_id, row["zone"], row["period"], row["violence"], row["service"], row["cases"], row["capacity"])
+                (
+                    dataset_id,
+                    row["zone"],
+                    row.get("residence_zone", ""),
+                    row["period"],
+                    row.get("event_date", ""),
+                    row.get("period_complete", 1),
+                    row["violence"],
+                    row["service"],
+                    row["cases"],
+                    row["capacity"],
+                    row.get("cases_status", "value"),
+                    row.get("capacity_status", "value"),
+                    row.get("person_id", ""),
+                )
                 for row in records
             ],
         )

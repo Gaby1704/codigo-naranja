@@ -6,7 +6,10 @@ from typing import Any
 
 from app.services.constants import load_constants
 
-_NON_DIGITS = re.compile(r"[^\d.-]")
+_NUMERIC_PATTERN = re.compile(r"^[-+]?\d+(?:\.\d+)?$")
+_NA_TOKENS = {"N/A", "NA", "N.A.", "N.A", "NO APLICA", "NO APLICABLE"}
+_MISSING_TOKENS = {"", "NULL", "NONE", "NAN", "SIN DATO", "FALTANTE", "N/D", "ND", "-", "--"}
+_INCOMPLETE_TOKENS = ("INCOMPLET", "PARCIAL", "EN CURSO", "PROVISIONAL", "ABIERTO", "(P)")
 
 
 def js_round(value: float) -> int:
@@ -36,37 +39,45 @@ def natural_key(value: str) -> tuple:
     return tuple(key)
 
 
-def parse_number(value: Any) -> float:
-    text = "" if value is None else str(value)
-    cleaned = _NON_DIGITS.sub("", text)
-    if cleaned in {"", "-", ".", "-.", "+", "+."}:
-        return math.nan
+def parse_numeric_cell(value: Any) -> tuple[float | None, str]:
+    """Classify a numeric cell without conflating 0, N/A, missing, and invalid text."""
+    if value is None:
+        return None, "missing"
+    if isinstance(value, bool):
+        return None, "invalid"
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if not math.isfinite(number) or number < 0:
+            return None, "invalid"
+        return (0.0, "zero") if number == 0.0 else (number, "value")
+
+    raw = str(value).strip()
+    folded = normalize(raw)
+    if folded in _MISSING_TOKENS:
+        return None, "missing"
+    if folded in _NA_TOKENS:
+        return None, "na"
+
+    compact = raw.replace(" ", "").replace(",", "")
+    if _NUMERIC_PATTERN.fullmatch(compact) is None:
+        return None, "invalid"
     try:
-        number = float(cleaned)
+        number = float(compact)
     except ValueError:
-        return math.nan
-    if not math.isfinite(number):
-        return math.nan
-    return number
+        return None, "invalid"
+    if not math.isfinite(number) or number < 0:
+        return None, "invalid"
+    return (0.0, "zero") if number == 0.0 else (number, "value")
 
 
-def numeric_field(value: Any) -> tuple[float, bool]:
-    raw = "" if value is None else str(value)
-    if raw.strip() == "":
-        return 0.0, True
-    number = parse_number(raw)
-    if not math.isfinite(number):
-        return 0.0, True
-    return max(0.0, number), False
-
-
-def score(cases_value: Any, capacity_value: Any) -> float:
-    cases = parse_number(cases_value)
-    capacity = parse_number(capacity_value)
-    if not math.isfinite(cases):
-        cases = 0.0
-    divisor = capacity if math.isfinite(capacity) and capacity > 1 else 1.0
-    return cases / divisor
+def is_period_incomplete(period: str, status_value: Any = "") -> bool:
+    period_norm = normalize(period)
+    status_norm = normalize(status_value)
+    if any(token in period_norm for token in _INCOMPLETE_TOKENS):
+        return True
+    if status_norm in {"0", "NO", "FALSE", "INCOMPLETO", "INCOMPLETA", "PARCIAL", "EN CURSO", "PROVISIONAL"}:
+        return True
+    return any(token in status_norm for token in _INCOMPLETE_TOKENS)
 
 
 def classify(ratio: float, cases: float) -> dict[str, str]:
@@ -96,85 +107,153 @@ def suggest_mapping(headers: list[str]) -> dict[str, str]:
     patterns = load_constants()["columns"]["patterns"]
     normalized = [(header, normalize(header)) for header in headers]
 
-    def guess(field: str, fallback: bool) -> str:
-        for header, folded in normalized:
-            if any(pattern in folded for pattern in patterns[field]):
-                return header
+    def guess(field: str, fallback: bool, exclude: set[str] | None = None) -> str:
+        skip = exclude or set()
+        for pattern in patterns[field]:
+            for header, folded in normalized:
+                if header in skip:
+                    continue
+                if pattern in folded:
+                    return header
         if fallback and headers:
+            for header in headers:
+                if header not in skip:
+                    return header
             return headers[0]
         return ""
 
+    zone = guess("zone", True)
+    residence = guess("residenceZone", False, exclude={zone})
+    period = guess("period", True, exclude={zone, residence})
+    event_date = guess("eventDate", False, exclude={zone, residence, period})
+    violence = guess("violence", True, exclude={zone, residence, period, event_date})
+    service = guess("service", True, exclude={zone, residence, period, event_date, violence})
+    cases = guess("cases", True, exclude={zone, residence, period, event_date, violence, service})
+    capacity = guess("capacity", True, exclude={zone, residence, period, event_date, violence, service, cases})
+    person = guess("person", False)
+    period_status = guess("periodStatus", False)
+
     return {
-        "zone": guess("zone", True),
-        "period": guess("period", True),
-        "violence": guess("violence", True),
-        "service": guess("service", True),
-        "cases": guess("cases", True),
-        "capacity": guess("capacity", True),
-        "person": guess("person", False),
+        "zone": zone,
+        "residenceZone": residence,
+        "period": period,
+        "eventDate": event_date,
+        "violence": violence,
+        "service": service,
+        "cases": cases,
+        "capacity": capacity,
+        "person": person,
+        "periodStatus": period_status,
     }
 
 
-def clean_rows(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def validate_processed_rows(rows: list[dict[str, Any]], mapping: dict[str, str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Validate pre-processed rows for schema and coherence without discarding multi-case expedientes."""
     unspecified = load_constants()["filters"]["unspecified"]
+    text_cols = {mapping["zone"], mapping["period"], mapping["violence"], mapping["service"]}
+    if mapping["cases"] in text_cols or mapping["capacity"] in text_cols:
+        raise ValueError("El mapeo no es coherente: casos y capacidad deben corresponder a columnas numéricas.")
+
     processed = len(rows)
     removed = 0
-    imputed = 0
-    person_duplicates = 0
+    zero_values = 0
+    na_values = 0
+    missing_values = 0
     seen_rows: set[str] = set()
-    seen_people: set[str] = set()
+    person_counts: dict[str, int] = {}
+    has_residence = False
+    has_event_date = False
 
-    def period_of(row: dict[str, Any]) -> str:
-        return str(row.get(mapping["period"]) or "")
-
-    ordered = sorted(
-        rows,
-        key=lambda row: (
-            natural_key(period_of(row)),
-            score(row.get(mapping["cases"]), row.get(mapping["capacity"])),
-        ),
-        reverse=True,
-    )
     cleaned: list[dict[str, Any]] = []
-    for raw in ordered:
-        if all(str(value).strip() == "" for value in raw.values()):
+    for raw in rows:
+        if all(str(value or "").strip() == "" for value in raw.values()):
             removed += 1
             continue
+
         fingerprint = json.dumps(raw, ensure_ascii=False, sort_keys=True, default=str)
         if fingerprint in seen_rows:
             removed += 1
             continue
         seen_rows.add(fingerprint)
-        person_id = normalize(raw.get(mapping["person"])) if mapping.get("person") else ""
-        if person_id and person_id in seen_people:
+
+        zone_raw = str(raw.get(mapping["zone"]) or "").strip()
+        period_raw = str(raw.get(mapping["period"]) or "").strip()
+        if not zone_raw and not period_raw:
             removed += 1
-            person_duplicates += 1
             continue
-        if person_id:
-            seen_people.add(person_id)
-        cases, cases_imputed = numeric_field(raw.get(mapping["cases"]))
-        capacity, capacity_imputed = numeric_field(raw.get(mapping["capacity"]))
-        imputed += int(cases_imputed) + int(capacity_imputed)
-        zone = canonical_zone(raw.get(mapping["zone"]))
-        period = str(raw.get(mapping["period"]) or "").strip() or unspecified
+
+        cases_val, cases_status = parse_numeric_cell(raw.get(mapping["cases"]))
+        capacity_val, capacity_status = parse_numeric_cell(raw.get(mapping["capacity"]))
+        if cases_status == "invalid" or capacity_status == "invalid":
+            removed += 1
+            continue
+
+        for status in (cases_status, capacity_status):
+            if status == "zero":
+                zero_values += 1
+            elif status == "na":
+                na_values += 1
+            elif status == "missing":
+                missing_values += 1
+
+        person_col = mapping.get("person") or ""
+        person_id = normalize(raw.get(person_col)) if person_col else ""
+        if person_id and person_id not in _NA_TOKENS and person_id not in _MISSING_TOKENS:
+            person_counts[person_id] = person_counts.get(person_id, 0) + 1
+        else:
+            person_id = ""
+
+        res_col = mapping.get("residenceZone") or ""
+        res_raw = str(raw.get(res_col) or "").strip() if res_col else ""
+        residence_zone = ""
+        if res_raw and normalize(res_raw) not in (_NA_TOKENS | _MISSING_TOKENS):
+            residence_zone = canonical_zone(res_raw)
+            has_residence = True
+
+        event_col = mapping.get("eventDate") or ""
+        event_raw = str(raw.get(event_col) or "").strip() if event_col else ""
+        event_date = ""
+        if event_raw and normalize(event_raw) not in (_NA_TOKENS | _MISSING_TOKENS):
+            event_date = event_raw
+            has_event_date = True
+
+        status_col = mapping.get("periodStatus") or ""
+        period_status = raw.get(status_col, "") if status_col else ""
+
+        zone = canonical_zone(zone_raw)
+        period = period_raw or unspecified
         violence = normalize(raw.get(mapping["violence"])) or unspecified
         service = normalize(raw.get(mapping["service"])) or unspecified
+        complete = not is_period_incomplete(period, period_status)
+
         cleaned.append(
             {
                 "zone": zone,
+                "residence_zone": residence_zone,
                 "period": period,
+                "event_date": event_date,
+                "period_complete": 1 if complete else 0,
                 "violence": violence,
                 "service": service,
-                "cases": cases,
-                "capacity": capacity,
+                "cases": cases_val,
+                "capacity": capacity_val,
+                "cases_status": cases_status,
+                "capacity_status": capacity_status,
+                "person_id": person_id,
             }
         )
+
     audit = {
         "processed": processed,
         "valid": len(cleaned),
         "removed": removed,
-        "imputed": imputed,
-        "personDuplicates": person_duplicates,
+        "uniquePeople": len(person_counts),
+        "multiCasePeople": sum(1 for count in person_counts.values() if count > 1),
+        "zeroValues": zero_values,
+        "notApplicable": na_values,
+        "missingValues": missing_values,
+        "hasResidenceDistinction": has_residence,
+        "hasEventDateDistinction": has_event_date,
     }
     return cleaned, audit
 

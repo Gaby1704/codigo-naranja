@@ -13,7 +13,22 @@
     "trends",
     "totalCases",
     "totalCapacity",
+    "totalPeople",
+    "totalRecords",
+    "hasPersonIds",
+    "hasCapacityData",
+    "hasResidenceDistinction",
+    "hasEventDateDistinction",
+    "missingCasesCount",
+    "naCasesCount",
+    "missingCapacityCount",
+    "naCapacityCount",
     "priorityCount",
+    "dimensionLabels",
+    "dynamicBreakdowns",
+    "dynamicMetrics",
+    "mobileRoute",
+    "forecast",
     "source"
   ],
   "properties": {
@@ -25,7 +40,22 @@
     "trends": { "type": "array", "items": { "$ref": "#/$defs/trend" } },
     "totalCases": { "type": "number", "minimum": 0 },
     "totalCapacity": { "type": "number", "minimum": 0 },
+    "totalPeople": { "type": "integer", "minimum": 0 },
+    "totalRecords": { "type": "integer", "minimum": 0 },
+    "hasPersonIds": { "type": "boolean" },
+    "hasCapacityData": { "type": "boolean" },
+    "hasResidenceDistinction": { "type": "boolean" },
+    "hasEventDateDistinction": { "type": "boolean" },
+    "missingCasesCount": { "type": "integer", "minimum": 0 },
+    "naCasesCount": { "type": "integer", "minimum": 0 },
+    "missingCapacityCount": { "type": "integer", "minimum": 0 },
+    "naCapacityCount": { "type": "integer", "minimum": 0 },
     "priorityCount": { "type": "integer", "minimum": 0 },
+    "dimensionLabels": { "$ref": "#/$defs/dimensionLabels" },
+    "dynamicBreakdowns": { "type": "array", "items": { "$ref": "#/$defs/dynamicBreakdown" } },
+    "dynamicMetrics": { "type": "array", "items": { "$ref": "#/$defs/dynamicMetric" } },
+    "mobileRoute": { "type": "array", "items": { "$ref": "#/$defs/mobileRouteStop" } },
+    "forecast": { "$ref": "#/$defs/forecast" },
     "source": { "$ref": "#/$defs/source" }
   },
   "$defs": {
@@ -39,20 +69,132 @@
         "color": { "enum": ["priority", "elevated", "watch", "stable"] }
       }
     },
+    "dimensionLabels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "period", "violence", "service", "cases", "capacity"],
+      "properties": {
+        "zone": { "type": "string" },
+        "period": { "type": "string" },
+        "violence": { "type": "string" },
+        "service": { "type": "string" },
+        "cases": { "type": "string" },
+        "capacity": { "type": "string" }
+      }
+    },
+    "dynamicBreakdownItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "cases", "records", "sharePct"],
+      "properties": {
+        "name": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "records": { "type": "integer", "minimum": 0 },
+        "sharePct": { "type": "number", "minimum": 0 }
+      }
+    },
+    "dynamicBreakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "kind", "filterField", "totalCategories", "items"],
+      "properties": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "enum": ["category", "status", "temporal"] },
+        "filterField": { "type": ["string", "null"] },
+        "totalCategories": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/dynamicBreakdownItem" } }
+      }
+    },
+    "dynamicMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "sum", "avg", "min", "max", "validCount", "zeroCount", "naCount", "missingCount"],
+      "properties": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "sum": { "type": "number" },
+        "avg": { "type": ["number", "null"] },
+        "min": { "type": ["number", "null"] },
+        "max": { "type": ["number", "null"] },
+        "validCount": { "type": "integer", "minimum": 0 },
+        "zeroCount": { "type": "integer", "minimum": 0 },
+        "naCount": { "type": "integer", "minimum": 0 },
+        "missingCount": { "type": "integer", "minimum": 0 }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "cases", "capacity", "ratio", "count", "classification"],
+      "required": [
+        "name",
+        "cases",
+        "capacity",
+        "ratio",
+        "count",
+        "uniquePeople",
+        "residenceCases",
+        "casesValidCount",
+        "casesZeroCount",
+        "casesNaCount",
+        "casesMissingCount",
+        "capacityValidCount",
+        "capacityZeroCount",
+        "capacityNaCount",
+        "capacityMissingCount",
+        "avgCasesPerRecord",
+        "avgCapacityPerRecord",
+        "classification"
+      ],
       "properties": {
         "name": { "type": "string" },
         "cases": { "type": "number", "minimum": 0 },
         "capacity": { "type": "number", "minimum": 0 },
         "ratio": { "type": "number" },
         "count": { "type": "integer", "minimum": 0 },
+        "uniquePeople": { "type": "integer", "minimum": 0 },
+        "residenceCases": { "type": "number", "minimum": 0 },
+        "casesValidCount": { "type": "integer", "minimum": 0 },
+        "casesZeroCount": { "type": "integer", "minimum": 0 },
+        "casesNaCount": { "type": "integer", "minimum": 0 },
+        "casesMissingCount": { "type": "integer", "minimum": 0 },
+        "capacityValidCount": { "type": "integer", "minimum": 0 },
+        "capacityZeroCount": { "type": "integer", "minimum": 0 },
+        "capacityNaCount": { "type": "integer", "minimum": 0 },
+        "capacityMissingCount": { "type": "integer", "minimum": 0 },
+        "avgCasesPerRecord": { "type": ["number", "null"] },
+        "avgCapacityPerRecord": { "type": ["number", "null"] },
         "classification": { "$ref": "#/$defs/classification" }
       }
     },
     "trend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["period", "cases", "capacity", "uniquePeople", "complete"],
+      "properties": {
+        "period": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "capacity": { "type": "number", "minimum": 0 },
+        "uniquePeople": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      }
+    },
+    "mobileRouteStop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "rank", "intervention", "reason", "cases", "capacity", "ratio", "color"],
+      "properties": {
+        "zone": { "type": "string" },
+        "rank": { "type": "integer", "minimum": 1 },
+        "intervention": { "type": "string" },
+        "reason": { "type": "string" },
+        "cases": { "type": "number", "minimum": 0 },
+        "capacity": { "type": "number", "minimum": 0 },
+        "ratio": { "type": "number" },
+        "color": { "enum": ["priority", "elevated", "watch", "stable"] }
+      }
+    },
+    "forecastPoint": {
       "type": "object",
       "additionalProperties": false,
       "required": ["period", "cases", "capacity"],
@@ -62,16 +204,60 @@
         "capacity": { "type": "number", "minimum": 0 }
       }
     },
+    "forecast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "horizonYears",
+        "direction",
+        "annualDeltaCases",
+        "annualDeltaCapacity",
+        "points",
+        "completePeriodsUsed",
+        "excludedIncompletePeriods",
+        "assumptions",
+        "proposals"
+      ],
+      "properties": {
+        "available": { "type": "boolean" },
+        "horizonYears": { "type": "integer", "minimum": 1 },
+        "direction": { "enum": ["al alza", "estable", "a la baja", "insuficiente"] },
+        "annualDeltaCases": { "type": "number" },
+        "annualDeltaCapacity": { "type": "number" },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/forecastPoint" } },
+        "completePeriodsUsed": { "type": "array", "items": { "type": "string" } },
+        "excludedIncompletePeriods": { "type": "array", "items": { "type": "string" } },
+        "assumptions": { "type": "string" },
+        "proposals": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "audit": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["processed", "valid", "removed", "imputed", "personDuplicates"],
+      "required": [
+        "processed",
+        "valid",
+        "removed",
+        "uniquePeople",
+        "multiCasePeople",
+        "zeroValues",
+        "notApplicable",
+        "missingValues",
+        "hasResidenceDistinction",
+        "hasEventDateDistinction"
+      ],
       "properties": {
         "processed": { "type": "integer", "minimum": 0 },
         "valid": { "type": "integer", "minimum": 0 },
         "removed": { "type": "integer", "minimum": 0 },
-        "imputed": { "type": "integer", "minimum": 0 },
-        "personDuplicates": { "type": "integer", "minimum": 0 }
+        "uniquePeople": { "type": "integer", "minimum": 0 },
+        "multiCasePeople": { "type": "integer", "minimum": 0 },
+        "zeroValues": { "type": "integer", "minimum": 0 },
+        "notApplicable": { "type": "integer", "minimum": 0 },
+        "missingValues": { "type": "integer", "minimum": 0 },
+        "hasResidenceDistinction": { "type": "boolean" },
+        "hasEventDateDistinction": { "type": "boolean" }
       }
     },
     "source": {

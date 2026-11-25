@@ -36,8 +36,9 @@ def _workbook() -> bytes:
     sheet.title = "Registros"
     sheet.append(["Municipio", "Periodo", "Tipo_de_violencia", "Tipo_de_servicio", "Casos", "Capacidad", "Identificador"])
     sheet.append(["Apizaco", "2026", "Física", "Orientación jurídica", 10, 5, "EXP-1"])
-    sheet.append(["Apizaco", "2024", "Física", "Orientación jurídica", 40, 5, "EXP-1"])
+    sheet.append(["Apizaco", "2024", "Psicológica", "Atención psicológica", 40, 5, "EXP-1"])
     sheet.append(["Tlaxcala", "2026", "Económica", "Trabajo social", 8, 20, "EXP-2"])
+    sheet.append(["Chiautempan", "2026", "Física", "Trabajo social", 0, "N/A", "EXP-3"])
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
@@ -54,9 +55,11 @@ def test_health_and_public_dashboard(client: TestClient) -> None:
     assert body["source"]["synthetic"] is True
     assert len(body["summaries"]) == 20
     assert body["totalCases"] > 0
+    assert body["forecast"]["available"] is True
+    assert len(body["forecast"]["points"]) == 5
 
 
-def test_login_upload_and_cleanup(client: TestClient) -> None:
+def test_login_upload_and_validation(client: TestClient) -> None:
     denied = client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
     assert denied.status_code == 403
 
@@ -86,14 +89,21 @@ def test_login_upload_and_cleanup(client: TestClient) -> None:
         json={"sheet": "Registros", "mapping": preview["suggestedMapping"]},
     )
     assert applied.status_code == 200
-    assert applied.json()["audit"]["valid"] == 2
-    assert applied.json()["audit"]["personDuplicates"] == 1
+    audit = applied.json()["audit"]
+    assert audit["valid"] == 4
+    assert audit["uniquePeople"] == 3
+    assert audit["multiCasePeople"] == 1
+    assert audit["zeroValues"] == 1
+    assert audit["notApplicable"] == 1
 
     board = client.get("/api/dashboard", params={"period": "Todos los periodos"}).json()
     by_name = {item["name"]: item for item in board["summaries"]}
-    assert by_name["Apizaco"]["cases"] == 10
+    assert by_name["Apizaco"]["cases"] == 50
+    assert by_name["Apizaco"]["uniquePeople"] == 1
     assert by_name["Apizaco"]["classification"]["color"] == "priority"
     assert by_name["Tlaxcala"]["classification"]["color"] == "stable"
+    assert by_name["Chiautempan"]["casesZeroCount"] == 1
+    assert by_name["Chiautempan"]["capacityNaCount"] == 1
     assert board["source"]["synthetic"] is False
 
     assert client.post("/api/auth/logout", headers=HEADERS).status_code == 204

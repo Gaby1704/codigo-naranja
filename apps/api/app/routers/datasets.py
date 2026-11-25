@@ -10,7 +10,7 @@ from app.schemas import ApplyBody, SheetBody, UploadPreview
 from app.services.accounts import CurrentUser
 from app.services.catalog import replace_active
 from app.services.excel import WorkbookError, build_template, parse_workbook
-from app.services.rules import clean_rows
+from app.services.rules import suggest_mapping, validate_processed_rows
 from app.services.uploads import drop_upload, get_upload, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -36,8 +36,6 @@ def _filename(upload: UploadFile) -> str:
 
 
 def _preview(upload_id: str, name: str, sheets: dict[str, list[dict[str, str]]], sheet: str) -> dict:
-    from app.services.rules import suggest_mapping
-
     rows = sheets[sheet]
     headers = list(rows[0].keys()) if rows else []
     visible = headers[:6]
@@ -111,11 +109,14 @@ def apply_upload(
         raise HTTPException(status_code=400, detail="La hoja seleccionada no contiene registros.")
     headers = list(rows[0].keys())
     mapping = body.mapping.model_dump()
-    if any(column not in headers for column in mapping.values()):
+    if any(column and column not in headers for column in mapping.values()):
         raise HTTPException(status_code=400, detail="La asignación incluye una columna que no existe en la hoja.")
-    cleaned, audit = clean_rows(rows, mapping)
+    try:
+        cleaned, audit = validate_processed_rows(rows, mapping)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not cleaned:
-        raise HTTPException(status_code=400, detail="No se encontraron filas válidas.")
+        raise HTTPException(status_code=400, detail="No se encontraron registros válidos coherentes con el esquema esperado.")
     replace_active(pending.name, cleaned, audit)
     drop_upload(upload_id)
     return {"audit": audit, "fileName": pending.name}

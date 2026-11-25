@@ -12,6 +12,18 @@ export type Summary = {
   capacity: number
   ratio: number
   count: number
+  uniquePeople: number
+  residenceCases: number
+  casesValidCount: number
+  casesZeroCount: number
+  casesNaCount: number
+  casesMissingCount: number
+  capacityValidCount: number
+  capacityZeroCount: number
+  capacityNaCount: number
+  capacityMissingCount: number
+  avgCasesPerRecord: number | null
+  avgCapacityPerRecord: number | null
   classification: Classification
 }
 
@@ -19,14 +31,89 @@ export type Trend = {
   period: string
   cases: number
   capacity: number
+  uniquePeople: number
+  complete: boolean
+}
+
+export type MobileRouteStop = {
+  zone: string
+  rank: number
+  intervention: string
+  reason: string
+  cases: number
+  capacity: number
+  ratio: number
+  color: ClassificationColor
+}
+
+export type ForecastPoint = {
+  period: string
+  cases: number
+  capacity: number
+}
+
+export type Forecast = {
+  available: boolean
+  horizonYears: number
+  direction: "al alza" | "estable" | "a la baja" | "insuficiente"
+  annualDeltaCases: number
+  annualDeltaCapacity: number
+  points: ForecastPoint[]
+  completePeriodsUsed: string[]
+  excludedIncompletePeriods: string[]
+  assumptions: string
+  proposals: string[]
+}
+
+export type DimensionLabels = {
+  zone: string
+  period: string
+  violence: string
+  service: string
+  cases: string
+  capacity: string
+}
+
+export type DynamicBreakdownItem = {
+  name: string
+  cases: number
+  records: number
+  sharePct: number
+}
+
+export type DynamicBreakdown = {
+  key: string
+  label: string
+  kind: "category" | "status" | "temporal"
+  filterField: "violence" | "service" | "period" | "zone" | null
+  totalCategories: number
+  items: DynamicBreakdownItem[]
+}
+
+export type DynamicMetric = {
+  key: string
+  label: string
+  sum: number
+  avg: number | null
+  min: number | null
+  max: number | null
+  validCount: number
+  zeroCount: number
+  naCount: number
+  missingCount: number
 }
 
 export type Audit = {
   processed: number
   valid: number
   removed: number
-  imputed: number
-  personDuplicates: number
+  uniquePeople: number
+  multiCasePeople: number
+  zeroValues: number
+  notApplicable: number
+  missingValues: number
+  hasResidenceDistinction: boolean
+  hasEventDateDistinction: boolean
 }
 
 export type DashboardSource = {
@@ -44,7 +131,22 @@ export type Dashboard = {
   trends: Trend[]
   totalCases: number
   totalCapacity: number
+  totalPeople: number
+  totalRecords: number
+  hasPersonIds: boolean
+  hasCapacityData: boolean
+  hasResidenceDistinction: boolean
+  hasEventDateDistinction: boolean
+  missingCasesCount: number
+  naCasesCount: number
+  missingCapacityCount: number
+  naCapacityCount: number
   priorityCount: number
+  dimensionLabels: DimensionLabels
+  dynamicBreakdowns: DynamicBreakdown[]
+  dynamicMetrics: DynamicMetric[]
+  mobileRoute: MobileRouteStop[]
+  forecast: Forecast
   source: DashboardSource
 }
 
@@ -60,12 +162,15 @@ export type AuthResponse = {
 
 export type ColumnMapping = {
   zone: string
+  residenceZone: string
   period: string
+  eventDate: string
   violence: string
   service: string
   cases: string
   capacity: string
   person: string
+  periodStatus: string
 }
 
 export type UploadPreview = {
@@ -77,19 +182,24 @@ export type UploadPreview = {
   preview: Record<string, string>[]
   rowCount: number
   suggestedMapping: ColumnMapping
+  detectedDimensions: string[]
+  detectedMetrics: string[]
 }
 
 export type ZonePoint = {
   name: string
   x: number
   y: number
+  labelPos?: "left" | "right" | "top" | "bottom"
 }
 
 export type RecordRow = {
   zone: string
+  residenceZone: string
   period: string
+  eventDate: string
   violence: string
   service: string
-  cases: number
-  capacity: number
+  cases: number | null
+  capacity: number | null
 }

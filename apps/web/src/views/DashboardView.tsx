@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowUpRight, Filter, Gauge, HeartHandshake, MapPin, RefreshCw, Users } from "lucide-react"
+import { AlertTriangle, ArrowUpRight, BarChart3, Filter, Gauge, HeartHandshake, Map, MapPin, RefreshCw, Table2, Users } from "lucide-react"
 import { useState } from "react"
 import { ActionTable } from "../components/ActionTable"
-import { Charts } from "../components/Charts"
+import { Charts, GeneralComparisonCard } from "../components/Charts"
 import { MapPanel } from "../components/MapPanel"
 import { fmt } from "../lib/format"
 import { filters as labels } from "../lib/shared"
@@ -10,24 +10,34 @@ import { useBoard } from "../state/board"
 export function DashboardView() {
   const { filters, setFilters, data, loading, error } = useBoard()
   const [selected, setSelected] = useState("Apizaco")
-  const [mobileView, setMobileView] = useState<"map" | "charts" | "table">("map")
+  const [activeTab, setActiveTab] = useState<"overview" | "charts" | "table">("overview")
   const [filtersOpen, setFiltersOpen] = useState(false)
+
   const summaries = data?.summaries ?? []
   const totalCases = data?.totalCases ?? 0
   const totalCapacity = data?.totalCapacity ?? 0
+  const totalPeople = data?.totalPeople ?? 0
+  const totalRecords = data?.totalRecords ?? 0
   const demandExceeds = totalCases / Math.max(totalCapacity, 1) > 1
+  const missingTotal = (data?.missingCasesCount ?? 0) + (data?.missingCapacityCount ?? 0)
+  const naTotal = (data?.naCasesCount ?? 0) + (data?.naCapacityCount ?? 0)
+  const activeFiltersCount =
+    (filters.period !== labels.defaultPeriod ? 1 : 0) +
+    (filters.municipality !== labels.allZones ? 1 : 0) +
+    (filters.violence !== labels.allViolence ? 1 : 0) +
+    (filters.service !== labels.allServices ? 1 : 0)
 
   return (
     <>
       <section className={`filters-row ${filtersOpen ? "filters-open" : ""}`}>
         <span className="filters-label">
-          <Filter size={14} /> FILTRAR
+          <Filter size={13} /> FILTRAR
         </span>
         <button type="button" className="mobile-filter-toggle" onClick={() => setFiltersOpen((open) => !open)}>
-          <Filter size={15} /> Filtros
+          <Filter size={15} /> Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
         </button>
         <label className="filter-select">
-          <span>PERIODO</span>
+          <span>PERIODO DE CORTE</span>
           <select value={filters.period} onChange={(event) => setFilters({ ...filters, period: event.target.value })}>
             <option>{labels.allPeriods}</option>
             {(data?.periods ?? []).map((period) => (
@@ -36,7 +46,7 @@ export function DashboardView() {
           </select>
         </label>
         <label className="filter-select">
-          <span>ZONA / MUNICIPIO</span>
+          <span>MUNICIPIO (HECHO)</span>
           <select value={filters.municipality} onChange={(event) => setFilters({ ...filters, municipality: event.target.value })}>
             <option>{labels.allZones}</option>
             {(data?.municipalities ?? []).map((name) => (
@@ -86,9 +96,9 @@ export function DashboardView() {
       <section className="kpi-grid" aria-label="Indicadores clave">
         <article className="kpi-card">
           <div className="kpi-top">
-            <span>CASOS REGISTRADOS</span>
+            <span>CASOS vs. EXPEDIENTES</span>
             <span className="kpi-icon burgundy">
-              <Users size={17} />
+              <Users size={15} />
             </span>
           </div>
           <div className="kpi-value">
@@ -97,16 +107,16 @@ export function DashboardView() {
           </div>
           <div className="kpi-foot">
             <span className="kpi-trend">
-              <ArrowUpRight size={13} /> Registros activos
+              <ArrowUpRight size={12} /> {data?.hasPersonIds ? `${fmt(totalPeople)} personas únicas` : `${fmt(totalRecords)} registros`}
             </span>
-            <span>en selección</span>
+            <span>{data?.hasPersonIds ? `${fmt(totalRecords)} filas` : "agregado"}</span>
           </div>
         </article>
         <article className="kpi-card">
           <div className="kpi-top">
-            <span>SERVICIOS / ATENCIONES REGISTRADAS</span>
+            <span>SERVICIOS / ATENCIONES</span>
             <span className="kpi-icon violet">
-              <HeartHandshake size={17} />
+              <HeartHandshake size={15} />
             </span>
           </div>
           <div className="kpi-value">
@@ -114,33 +124,33 @@ export function DashboardView() {
             <span className="kpi-unit">atenciones</span>
           </div>
           <div className="kpi-foot">
-            <span>Frecuencia acumulada</span>
-            <span>en selección</span>
+            <span>{naTotal > 0 ? `${naTotal} N/A excluidos` : "Capacidad registrada"}</span>
+            <span>{missingTotal > 0 ? `${missingTotal} faltantes` : "en selección"}</span>
           </div>
         </article>
         <article className="kpi-card">
           <div className="kpi-top">
-            <span>BRECHA RELATIVA DE ATENCIÓN</span>
+            <span>BRECHA RELATIVA</span>
             <span className="kpi-icon orange">
-              <Gauge size={17} />
+              <Gauge size={15} />
             </span>
           </div>
           <div className="kpi-value">
-            {totalCapacity ? `${Math.round((totalCases / totalCapacity) * 100)}%` : "—"}
+            {totalCapacity > 0 ? `${Math.round((totalCases / totalCapacity) * 100)}%` : totalCases > 0 ? "Sin cap." : "0%"}
             <span className="kpi-unit">demanda / capacidad</span>
           </div>
           <div className="kpi-foot">
             <span className={demandExceeds ? "text-priority" : "text-stable"}>
               {totalCases > totalCapacity ? "Demanda supera capacidad" : "Capacidad sobre demanda"}
             </span>
-            <span>estimado</span>
+            <span>{data?.hasResidenceDistinction ? "hecho vs. residencia" : "registros"}</span>
           </div>
         </article>
         <article className="kpi-card priority-kpi">
           <div className="kpi-top">
             <span>ZONAS PRIORITARIAS</span>
             <span className="kpi-icon priority-icon">
-              <MapPin size={17} />
+              <MapPin size={15} />
             </span>
           </div>
           <div className="kpi-value">
@@ -149,41 +159,97 @@ export function DashboardView() {
           </div>
           <div className="kpi-foot">
             <span className="kpi-trend orange-trend">
-              <AlertTriangle size={13} /> Atención prioritaria
+              <AlertTriangle size={12} /> Atención prioritaria
             </span>
-            <span>unidad móvil</span>
+            <span>en selección</span>
           </div>
         </article>
       </section>
-      <nav className="mobile-dashboard-tabs" aria-label="Secciones del tablero">
-        <button type="button" className={mobileView === "map" ? "active" : ""} onClick={() => setMobileView("map")}>
-          Mapa
+
+      <nav className="dashboard-tabs" role="tablist" aria-label="Vistas principales del tablero">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "overview"}
+          className={activeTab === "overview" ? "active" : ""}
+          onClick={() => setActiveTab("overview")}
+        >
+          <Map size={15} /> Mapa y gráfica general
         </button>
-        <button type="button" className={mobileView === "charts" ? "active" : ""} onClick={() => setMobileView("charts")}>
-          Gráficas
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "charts"}
+          className={activeTab === "charts" ? "active" : ""}
+          onClick={() => setActiveTab("charts")}
+        >
+          <BarChart3 size={15} /> Gráficas
         </button>
-        <button type="button" className={mobileView === "table" ? "active" : ""} onClick={() => setMobileView("table")}>
-          Tabla operativa
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "table"}
+          className={activeTab === "table" ? "active" : ""}
+          onClick={() => setActiveTab("table")}
+        >
+          <Table2 size={15} /> Tabla
         </button>
       </nav>
-      <div className={`main-grid mobile-view-${mobileView}`}>
-        <MapPanel summaries={summaries} selected={selected} onSelect={setSelected} />
-        <Charts
-          summaries={summaries}
-          trends={data?.trends ?? []}
-          selected={selected}
-          latestPeriod={data?.periods.at(-1) ?? "—"}
-          onSelect={setSelected}
-          onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}
-        />
+
+      <div className="dashboard-workspace">
+        {activeTab === "overview" && (
+          <div className="overview-grid">
+            <MapPanel
+              summaries={summaries}
+              selected={selected}
+              hasPersonIds={data?.hasPersonIds ?? false}
+              hasResidenceDistinction={data?.hasResidenceDistinction ?? false}
+              onSelect={setSelected}
+            />
+            <GeneralComparisonCard
+              summaries={summaries}
+              selected={selected}
+              maxRows={10}
+              onSelect={setSelected}
+              onShowAll={() => {
+                setFilters({ ...filters, municipality: labels.allZones })
+                setActiveTab("charts")
+              }}
+            />
+          </div>
+        )}
+
+        {activeTab === "charts" && (
+          <Charts
+            summaries={summaries}
+            trends={data?.trends ?? []}
+            forecast={data?.forecast}
+            selected={selected}
+            latestPeriod={data?.periods.at(-1) ?? "—"}
+            missingTotal={missingTotal}
+            naTotal={naTotal}
+            onSelect={setSelected}
+            onShowAll={() => setFilters({ ...filters, municipality: labels.allZones })}
+          />
+        )}
+
+        {activeTab === "table" && (
+          <ActionTable
+            summaries={summaries}
+            hasPersonIds={data?.hasPersonIds ?? false}
+            hasResidenceDistinction={data?.hasResidenceDistinction ?? false}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        )}
       </div>
-      <ActionTable className={`mobile-view-${mobileView}`} summaries={summaries} selected={selected} onSelect={setSelected} />
+
       <footer className="disclaimer">
         <span className="disclaimer-icon">
-          <AlertTriangle size={15} />
+          <AlertTriangle size={14} />
         </span>
         <p>
-          <strong>Nota de rigor analítico.</strong> Cada alerta/caso representa a una persona única según su identificador o expediente. Los resultados reflejan exclusivamente los registros disponibles en la base activa; no representan necesariamente la totalidad de la población ni la incidencia real. Las zonas con pocos registros podrían presentar subregistro.
+          <strong>Criterio BANAVIM / Tlaxcala:</strong> Un expediente único puede agrupar múltiples casos o seguimientos. Mayor volumen indica acercamiento institucional o cobertura, no mayor incidencia poblacional.
         </p>
         <span className="footer-brand">
           CÓDIGO NARANJA <i>·</i> BY MUEGAN-ING

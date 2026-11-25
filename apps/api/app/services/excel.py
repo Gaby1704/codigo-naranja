@@ -127,11 +127,23 @@ def _parse_xls(payload: bytes) -> dict[str, list[dict[str, str]]]:
 def build_template() -> bytes:
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Registros"
-    headers = ["Municipio", "Periodo", "Tipo_de_violencia", "Tipo_de_servicio", "Casos", "Capacidad", "Identificador"]
+    sheet.title = "Registros_Procesados"
+    headers = [
+        "Municipio_hecho",
+        "Municipio_residencia",
+        "Periodo_corte",
+        "Fecha_hecho",
+        "Tipo_de_violencia",
+        "Tipo_de_servicio",
+        "Casos",
+        "Servicios_atenciones",
+        "Expediente",
+        "Estado_periodo",
+    ]
     rows = [
-        ["APIZACO", "2026", "PSICOLOGICA", "ATENCION PSICOLOGICA", 42, 35, "EXP-0001"],
-        ["TLAXCALA", "2026", "FISICA", "ORIENTACION JURIDICA", 28, 50, "EXP-0002"],
+        ["APIZACO", "YAUHQUEMEHCAN", "2026", "2026-02-14", "PSICOLOGICA", "ATENCION PSICOLOGICA", 1, 2, "EXP-0001", "COMPLETO"],
+        ["APIZACO", "YAUHQUEMEHCAN", "2026", "2026-02-20", "ECONOMICA", "ORIENTACION JURIDICA", 1, 1, "EXP-0001", "COMPLETO"],
+        ["TLAXCALA", "TLAXCALA", "2026", "2026-03-01", "FISICA", "TRABAJO SOCIAL", 0, "N/A", "EXP-0002", "COMPLETO"],
     ]
     sheet.append(headers)
     for row in rows:

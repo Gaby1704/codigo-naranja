@@ -27,12 +27,12 @@
       },
       "watch": {
         "label": "Posible subregistro",
-        "action": "Jornada de detección",
+        "action": "Jornada de detección y muestreo",
         "color": "watch"
       },
       "elevated": {
         "label": "Optimizar capacidad",
-        "action": "Ampliar turnos de atención",
+        "action": "Jornada itinerante y turnos",
         "color": "elevated"
       },
       "stable": {
@@ -43,15 +43,29 @@
     }
   },
   "columns": {
-    "fields": ["zone", "period", "violence", "service", "cases", "capacity", "person"],
+    "fields": [
+      "zone",
+      "residenceZone",
+      "period",
+      "eventDate",
+      "violence",
+      "service",
+      "cases",
+      "capacity",
+      "person",
+      "periodStatus"
+    ],
     "patterns": {
-      "zone": ["MUNICIPIO", "ZONA"],
-      "period": ["PERIODO", "ANIO", "ANO", "FECHA", "MES"],
-      "violence": ["VIOLENCIA", "TIPO"],
-      "service": ["SERVICIO", "ATENCION"],
-      "cases": ["CASOS", "DEMANDA", "REGISTRO"],
-      "capacity": ["CAPACIDAD", "FRECUENCIA", "ATENCIONES", "SERVICIOS"],
-      "person": ["IDENTIFICADOR", "EXPEDIENTE", "CURP", "ID PERSONA", "ID CASO"]
+      "zone": ["MUNICIPIO_HECHO", "MUNICIPIO HECHO", "OCURRENCIA", "MUNICIPIO", "ALCALDIA", "DEMARCACION", "LOCALIDAD", "ZONA", "TERRITORIO", "REGION"],
+      "residenceZone": ["RESIDENCIA", "PERTENENCIA", "DOMICILIO", "ORIGEN"],
+      "period": ["PERIODO_CORTE", "PERIODO", "CORTE", "FECHA_REGISTRO", "REGISTRO", "ANIO", "ANO", "YEAR", "MES", "TRIMESTRE"],
+      "eventDate": ["FECHA_HECHO", "FECHA HECHO", "PERIODO_HECHO", "HECHO"],
+      "violence": ["VIOLENCIA", "MODALIDAD", "AMBITO", "DELITO", "AGRESION", "TIPO_CASO", "TIPO"],
+      "service": ["SERVICIO", "ATENCION", "CANALIZACION", "DEPENDENCIA", "PROGRAMA", "AREA"],
+      "cases": ["CASOS", "DEMANDA", "REPORTES", "INCIDENCIA", "DENUNCIAS", "CANTIDAD", "TOTAL"],
+      "capacity": ["CAPACIDAD", "FRECUENCIA", "ATENCIONES", "SERVICIOS", "SEGUIMIENTOS", "COBERTURA", "OFERTA"],
+      "person": ["EXPEDIENTE", "IDENTIFICADOR", "FOLIO", "CURP", "ID PERSONA", "ID_PERSONA", "ID CASO", "ID_CASO"],
+      "periodStatus": ["ESTADO_PERIODO", "COMPLETO", "ESTATUS_PERIODO", "COBERTURA_TEMPORAL"]
     }
   },
   "demo": {
@@ -72,25 +86,25 @@
     "capacityFactors": { "2024": 0.78, "2025": 0.9, "2026": 1 }
   },
   "zones": [
-    { "name": "Calpulalpan", "x": 26, "y": 20 },
-    { "name": "Nanacamilpa", "x": 30, "y": 27 },
-    { "name": "Hueyotlipan", "x": 29, "y": 43 },
-    { "name": "Tlaxco", "x": 54, "y": 13 },
-    { "name": "Atlangatepec", "x": 47, "y": 30 },
-    { "name": "Apizaco", "x": 56, "y": 45 },
-    { "name": "Yauhquemehcan", "x": 62, "y": 48 },
-    { "name": "Xaltocan", "x": 45, "y": 51 },
-    { "name": "Contla", "x": 69, "y": 63 },
-    { "name": "Tlaxcala", "x": 54, "y": 70 },
-    { "name": "Chiautempan", "x": 64, "y": 77 },
-    { "name": "Zacatelco", "x": 65, "y": 87 },
-    { "name": "Huamantla", "x": 74, "y": 51 },
-    { "name": "Ixtenco", "x": 73, "y": 70 },
-    { "name": "Tetla", "x": 63, "y": 32 },
-    { "name": "Teolocholco", "x": 61, "y": 84 },
-    { "name": "San Pablo del Monte", "x": 68, "y": 87 },
-    { "name": "Papalotla", "x": 66, "y": 75 },
-    { "name": "Nativitas", "x": 48, "y": 86 },
-    { "name": "Españita", "x": 31, "y": 58 }
+    { "name": "Calpulalpan", "x": 26, "y": 20, "labelPos": "right" },
+    { "name": "Nanacamilpa", "x": 30, "y": 27, "labelPos": "bottom" },
+    { "name": "Hueyotlipan", "x": 29, "y": 43, "labelPos": "left" },
+    { "name": "Tlaxco", "x": 54, "y": 13, "labelPos": "right" },
+    { "name": "Atlangatepec", "x": 47, "y": 30, "labelPos": "left" },
+    { "name": "Apizaco", "x": 56, "y": 45, "labelPos": "top" },
+    { "name": "Yauhquemehcan", "x": 62, "y": 48, "labelPos": "right" },
+    { "name": "Xaltocan", "x": 45, "y": 51, "labelPos": "left" },
+    { "name": "Contla", "x": 69, "y": 63, "labelPos": "right" },
+    { "name": "Tlaxcala", "x": 54, "y": 70, "labelPos": "left" },
+    { "name": "Chiautempan", "x": 64, "y": 77, "labelPos": "left" },
+    { "name": "Zacatelco", "x": 65, "y": 87, "labelPos": "bottom" },
+    { "name": "Huamantla", "x": 74, "y": 51, "labelPos": "right" },
+    { "name": "Ixtenco", "x": 73, "y": 70, "labelPos": "right" },
+    { "name": "Tetla", "x": 63, "y": 32, "labelPos": "right" },
+    { "name": "Teolocholco", "x": 61, "y": 84, "labelPos": "left" },
+    { "name": "San Pablo del Monte", "x": 68, "y": 87, "labelPos": "right" },
+    { "name": "Papalotla", "x": 66, "y": 75, "labelPos": "right" },
+    { "name": "Nativitas", "x": 48, "y": 86, "labelPos": "left" },
+    { "name": "Españita", "x": 31, "y": 58, "labelPos": "left" }
   ]
 }

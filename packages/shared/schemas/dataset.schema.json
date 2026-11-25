@@ -6,21 +6,46 @@
     "mapping": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["zone", "period", "violence", "service", "cases", "capacity", "person"],
+      "required": [
+        "zone",
+        "residenceZone",
+        "period",
+        "eventDate",
+        "violence",
+        "service",
+        "cases",
+        "capacity",
+        "person",
+        "periodStatus"
+      ],
       "properties": {
-        "zone": { "type": "string", "minLength": 1 },
-        "period": { "type": "string", "minLength": 1 },
-        "violence": { "type": "string", "minLength": 1 },
-        "service": { "type": "string", "minLength": 1 },
-        "cases": { "type": "string", "minLength": 1 },
-        "capacity": { "type": "string", "minLength": 1 },
-        "person": { "type": "string", "minLength": 1 }
+        "zone": { "type": "string" },
+        "residenceZone": { "type": "string" },
+        "period": { "type": "string" },
+        "eventDate": { "type": "string" },
+        "violence": { "type": "string" },
+        "service": { "type": "string" },
+        "cases": { "type": "string" },
+        "capacity": { "type": "string" },
+        "person": { "type": "string" },
+        "periodStatus": { "type": "string" }
       }
     },
     "preview": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["uploadId", "name", "sheet", "sheets", "headers", "preview", "rowCount", "suggestedMapping"],
+      "required": [
+        "uploadId",
+        "name",
+        "sheet",
+        "sheets",
+        "headers",
+        "preview",
+        "rowCount",
+        "suggestedMapping",
+        "detectedDimensions",
+        "detectedMetrics"
+      ],
       "properties": {
         "uploadId": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
@@ -29,7 +54,9 @@
         "headers": { "type": "array", "items": { "type": "string" } },
         "preview": { "type": "array", "items": { "type": "object", "additionalProperties": { "type": "string" } } },
         "rowCount": { "type": "integer", "minimum": 0 },
-        "suggestedMapping": { "$ref": "#/$defs/mapping" }
+        "suggestedMapping": { "$ref": "#/$defs/mapping" },
+        "detectedDimensions": { "type": "array", "items": { "type": "string" } },
+        "detectedMetrics": { "type": "array", "items": { "type": "string" } }
       }
     },
     "apply": {
@@ -47,11 +74,13 @@
       "required": ["zone", "period", "violence", "service", "cases", "capacity"],
       "properties": {
         "zone": { "type": "string" },
+        "residenceZone": { "type": "string" },
         "period": { "type": "string" },
+        "eventDate": { "type": "string" },
         "violence": { "type": "string" },
         "service": { "type": "string" },
-        "cases": { "type": "number", "minimum": 0 },
-        "capacity": { "type": "number", "minimum": 0 }
+        "cases": { "type": ["number", "null"], "minimum": 0 },
+        "capacity": { "type": ["number", "null"], "minimum": 0 }
       }
     }
   }

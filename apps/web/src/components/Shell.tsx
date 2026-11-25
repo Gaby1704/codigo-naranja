@@ -13,7 +13,7 @@ export function Shell() {
   const [loginOpen, setLoginOpen] = useState(false)
   const closeLogin = useCallback(() => setLoginOpen(false), [])
   const audit = data?.source.audit
-  const isAdmin = user?.role === "admin"
+  const isAdmin = ready && user?.role === "admin"
 
   async function signOut() {
     await logout()
@@ -26,7 +26,7 @@ export function Shell() {
       <header className="topbar">
         <a className="brand" href="#inicio" aria-label="Código Naranja by muegan-ing">
           <span className="brand-mark">
-            <ShieldCheck size={22} />
+            <ShieldCheck size={20} />
           </span>
           <span className="brand-copy">
             <b>
@@ -64,23 +64,25 @@ export function Shell() {
       <section className="page-intro" id="inicio">
         <div>
           <div className="eyebrow">
-            <span className="orange-line" /> INTELIGENCIA TERRITORIAL <span className="eyebrow-slash">/</span> 01 — 2026
+            <span className="orange-line" /> INTELIGENCIA TERRITORIAL <span className="eyebrow-slash">/</span> BANAVIM · TLAXCALA
           </div>
           <h1>
             Mapa de Saturación <span>&amp; Cobertura</span>
           </h1>
-          <p>Demanda de atención y capacidad de servicios para una respuesta más cercana a las mujeres de Tlaxcala.</p>
         </div>
+        <p className="intro-summary">
+          Demanda institucional y capacidad de servicios por municipio del hecho, distinguiendo expediente único, casos y seguimientos.
+        </p>
       </section>
       {qualityOpen && (
         <div className="quality-panel">
           <ShieldCheck size={18} />
           <div>
-            <b>Calidad y cobertura de los datos</b>
+            <b>Criterios de calidad, esquema y cobertura</b>
             <p>
               {audit
-                ? `${audit.valid} registros válidos de ${audit.processed}; ${audit.removed} filas vacías o duplicadas removidas, ${audit.personDuplicates} alertas duplicadas por persona bloqueadas/consolidadas y ${audit.imputed} valores numéricos imputados con 0. Cada alerta consolidada corresponde al registro más reciente o de mayor prioridad.${data?.source.fileName ? ` Archivo: ${data.source.fileName}.` : ""}`
-                : "El tablero refleja únicamente los registros cargados en la fuente activa. Los datos de demostración son sintéticos y no representan cifras oficiales."}
+                ? `${audit.valid} registros válidos de ${audit.processed} leídos (${audit.removed} vacíos, duplicados exactos o incoherentes descartados). ${audit.uniquePeople} expedientes/personas únicas (${audit.multiCasePeople} con múltiples casos o seguimientos sin duplicar persona). Celdas conservadas: ${audit.zeroValues} con valor 0, ${audit.notApplicable} marcadas como N/A (excluidas de promedios) y ${audit.missingValues} datos faltantes.`
+                : "La limpieza pesada se realiza fuera del tablero. Un mayor volumen territorial refleja cercanía institucional o capacidad de registro, no mayor incidencia poblacional."}
             </p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={() => setQualityOpen(false)}>
@@ -90,18 +92,18 @@ export function Shell() {
       )}
       <nav className="view-tabs" aria-label="Vistas del tablero">
         <NavLink to="/" end className={({ isActive }) => `tab-link${isActive ? " active" : ""}`}>
-          <Activity size={16} /> Tablero territorial
+          <Activity size={15} /> Tablero territorial
         </NavLink>
         {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => `tab-link${isActive ? " active" : ""}`}>
-            <SlidersHorizontal size={16} /> Administración <span className="tab-suffix">/ Carga de datos</span>
+            <SlidersHorizontal size={15} /> Administración <span className="tab-suffix">/ Carga de datos</span>
           </NavLink>
         )}
         <span className="tabs-spacer" />
         <span className="period-chip">
-          <CalendarDays size={14} />
-          {filters.period === "Todos los periodos" ? "Todos los periodos" : `Periodo ${filters.period}`}
-          <ChevronDown size={14} />
+          <CalendarDays size={13} />
+          {filters.period === "Todos los periodos" ? "Todos los periodos" : `Corte ${filters.period}`}
+          <ChevronDown size={13} />
         </span>
       </nav>
       <Outlet />
@@ -159,7 +161,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
         </span>
         <span className="eyebrow">ACCESO RESTRINGIDO</span>
         <h2 id="login-title">Administración</h2>
-        <p id="login-description">Inicia sesión con la cuenta administradora para cargar datos del tablero.</p>
+        <p id="login-description">Inicia sesión con la cuenta administradora para cargar archivos ya procesados al tablero.</p>
         <form onSubmit={(event) => void submit(event)}>
           <label>
             Usuario / correo del administrador
@@ -193,7 +195,7 @@ function LoginDialog({ onClose }: { onClose: () => void }) {
             {busy ? "Verificando…" : "Iniciar sesión"}
           </button>
         </form>
-        <small>El acceso administrativo está limitado a la cuenta creada con las variables ADMIN_EMAIL y ADMIN_PASSWORD.</small>
+        <small>El acceso administrativo está limitado a la cuenta configurada en el servidor.</small>
       </section>
     </div>
   )
