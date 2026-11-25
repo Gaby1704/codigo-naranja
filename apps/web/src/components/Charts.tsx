@@ -61,63 +61,69 @@ export function GeneralComparisonCard({
         </div>
         <span className="axis-tag">0 – {fmt(Math.ceil(maxScale))}</span>
       </div>
-      <div className="bar-chart">
-        {rows.map((row) => {
-          const demandWidth = row.cases === 0 ? 0 : Math.max(2, (row.cases / maxScale) * 100)
-          const capWidth = row.capacity === 0 ? 0 : Math.max(2, (row.capacity / maxScale) * 100)
-          return (
-            <button
-              type="button"
-              className={`bar-row ${row.name === selected ? "bar-active" : ""}`}
-              key={row.name}
-              onClick={() => onSelect(row.name)}
-              title={
-                hasCapacityData
-                  ? `${row.name}: ${fmt(row.cases)} casos · ${fmt(row.capacity)} atenciones`
-                  : `${row.name}: ${fmt(row.cases)} casos`
-              }
-            >
-              <span className="bar-name">{row.name}</span>
-              <span className={`bar-track${hasCapacityData ? "" : " single"}`}>
-                <i className="bar-demand" style={{ width: `${demandWidth}%` }} />
-                {hasCapacityData && <i className="bar-capacity" style={{ width: `${capWidth}%` }} />}
+      {rows.length === 0 ? (
+        <p className="mhc-empty">Sin información territorial para mostrar con los filtros actuales.</p>
+      ) : (
+        <>
+          <div className="bar-chart">
+            {rows.map((row) => {
+              const demandWidth = row.cases === 0 ? 0 : Math.max(2, (row.cases / maxScale) * 100)
+              const capWidth = row.capacity === 0 ? 0 : Math.max(2, (row.capacity / maxScale) * 100)
+              return (
+                <button
+                  type="button"
+                  className={`bar-row ${row.name === selected ? "bar-active" : ""}`}
+                  key={row.name}
+                  onClick={() => onSelect(row.name)}
+                  title={
+                    hasCapacityData
+                      ? `${row.name}: ${fmt(row.cases)} casos · ${fmt(row.capacity)} atenciones`
+                      : `${row.name}: ${fmt(row.cases)} casos`
+                  }
+                >
+                  <span className="bar-name">{row.name}</span>
+                  <span className={`bar-track${hasCapacityData ? "" : " single"}`}>
+                    <i className="bar-demand" style={{ width: `${demandWidth}%` }} />
+                    {hasCapacityData && <i className="bar-capacity" style={{ width: `${capWidth}%` }} />}
+                  </span>
+                  <span className="bar-number">
+                    {hasCapacityData ? `${fmt(row.cases)} / ${fmt(row.capacity)}` : fmt(row.cases)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="chart-legend">
+            <span>
+              <i className="legend-square demand" /> Casos
+            </span>
+            {hasCapacityData && (
+              <span>
+                <i className="legend-square capacity" /> Atenciones
               </span>
-              <span className="bar-number">
-                {hasCapacityData ? `${fmt(row.cases)} / ${fmt(row.capacity)}` : fmt(row.cases)}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-      <div className="chart-legend">
-        <span>
-          <i className="legend-square demand" /> Casos
-        </span>
-        {hasCapacityData && (
-          <span>
-            <i className="legend-square capacity" /> Atenciones
-          </span>
-        )}
-        {(allowInlineExpand ? summaries.length > maxRows : Boolean(onShowAll)) && (
-          <button
-            type="button"
-            onClick={() => {
-              if (allowInlineExpand) {
-                setExpanded((prev) => !prev)
-              } else {
-                onShowAll?.()
-              }
-            }}
-          >
-            {allowInlineExpand
-              ? expanded
-                ? `Ver top ${maxRows}`
-                : `Ver todos (${summaries.length})`
-              : "Ver todos"}{" "}
-            <ArrowUpRight size={13} />
-          </button>
-        )}
-      </div>
+            )}
+            {(allowInlineExpand ? summaries.length > maxRows : Boolean(onShowAll)) && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (allowInlineExpand) {
+                    setExpanded((prev) => !prev)
+                  } else {
+                    onShowAll?.()
+                  }
+                }}
+              >
+                {allowInlineExpand
+                  ? expanded
+                    ? `Ver top ${maxRows}`
+                    : `Ver todos (${summaries.length})`
+                  : "Ver todos"}{" "}
+                <ArrowUpRight size={13} />
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </section>
   )
 }

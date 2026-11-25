@@ -261,8 +261,19 @@ export function ActionTable({
         </div>
       </div>
 
-      <div className="action-table-wrap">
-        {viewMode === "summary" ? (
+      {viewMode === "summary" && rows.length === 0 ? (
+        <div className="notice" role="status">
+          No hay información disponible para mostrar en la tabla con los filtros actuales.
+        </div>
+      ) : viewMode === "records" && filteredRecordRows.length === 0 ? (
+        <div className="notice" role="status">
+          {loadingMore
+            ? "Buscando registros…"
+            : "No existen registros para mostrar con los filtros o búsqueda actuales."}
+        </div>
+      ) : (
+        <div className="action-table-wrap">
+          {viewMode === "summary" ? (
           <table className="action-table">
             <thead>
               <tr>
@@ -390,7 +401,8 @@ export function ActionTable({
             </tbody>
           </table>
         )}
-      </div>
+        </div>
+      )}
       <div className="table-footer">
         <span>
           {viewMode === "summary" ? (

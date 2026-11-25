@@ -112,6 +112,11 @@ export function DashboardView() {
         .slice(0, 3)
     : []
 
+  const primaryAgeMetric =
+    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label) && !/edad[_ ]?1\b/i.test(m.label)) ??
+    dynamicMetrics.find((m) => /\bedad\b/i.test(m.label)) ??
+    dynamicMetrics.find((m) => m.avg !== null)
+  const primaryViolenceItem = data?.dynamicBreakdowns?.find((b) => b.key === "violence")?.items[0]
   const hasDataInDb = Boolean(data?.hasData || (data && data.totalRecords > 0) || data?.source.fileName)
 
   if (loading && !data) {
@@ -307,18 +312,57 @@ export function DashboardView() {
                 <span>de 60 municipios en Tlaxcala</span>
               </div>
             </article>
-            <article className="kpi-card">
-              <div className="kpi-top">
-                <span>{hasPersonIds ? "Promedio por persona" : "Promedio por registro"}</span>
-                <span className="kpi-icon violet">
-                  <Gauge size={15} />
-                </span>
-              </div>
-              <div className="kpi-value">{avgCasesPerUnit}</div>
-              <div className="kpi-foot">
-                <span>{hasPersonIds ? "casos por persona única" : "casos por fila activa"}</span>
-              </div>
-            </article>
+            {hasPersonIds ? (
+              <article className="kpi-card">
+                <div className="kpi-top">
+                  <span>Promedio por persona</span>
+                  <span className="kpi-icon violet">
+                    <Gauge size={15} />
+                  </span>
+                </div>
+                <div className="kpi-value">{avgCasesPerUnit}</div>
+                <div className="kpi-foot">
+                  <span>casos por persona única</span>
+                </div>
+              </article>
+            ) : primaryAgeMetric && primaryAgeMetric.avg !== null ? (
+              <article className="kpi-card">
+                <div className="kpi-top">
+                  <span>{humanizeColumnLabel(primaryAgeMetric.label)} promedio</span>
+                  <span className="kpi-icon violet">
+                    <Gauge size={15} />
+                  </span>
+                </div>
+                <div className="kpi-value">{fmt(primaryAgeMetric.avg)}</div>
+                <div className="kpi-foot">
+                  <span>
+                    {primaryAgeMetric.mode !== null && primaryAgeMetric.mode !== undefined
+                      ? `Moda: ${fmt(primaryAgeMetric.mode)} · `
+                      : ""}
+                    {fmt(primaryAgeMetric.validCount)} válidos
+                  </span>
+                </div>
+              </article>
+            ) : (
+              <article className="kpi-card">
+                <div className="kpi-top">
+                  <span>Modalidad principal</span>
+                  <span className="kpi-icon violet">
+                    <Gauge size={15} />
+                  </span>
+                </div>
+                <div className="kpi-value kpi-value-text">
+                  {primaryViolenceItem ? primaryViolenceItem.name : "—"}
+                </div>
+                <div className="kpi-foot">
+                  <span>
+                    {primaryViolenceItem
+                      ? `${fmt(primaryViolenceItem.cases)} registros (${primaryViolenceItem.sharePct}%)`
+                      : "Sin desglose"}
+                  </span>
+                </div>
+              </article>
+            )}
             <article className="kpi-card">
               <div className="kpi-top">
                 <span>Municipio principal</span>
